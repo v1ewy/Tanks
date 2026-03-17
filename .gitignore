@@ -57,3 +57,10 @@ dkms.conf
 # Xcode
 .DS_Store
 *.xcodeproj
+/.vs
+/Tanks/.vs/Tanks.slnx
+/Tanks/Tanks/x64/Debug
+/Tanks/Tanks.slnx
+/Tanks/Tanks.vcxproj
+/Tanks/Tanks.vcxproj.filters
+/Tanks/Tanks.vcxproj.user
