@@ -57,6 +57,7 @@ dkms.conf
 # Xcode
 .DS_Store
 *.xcodeproj
+.entitlements
 /.vs
 /Tanks/.vs/Tanks.slnx
 /Tanks/Tanks/x64/Debug
