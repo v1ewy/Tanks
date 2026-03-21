@@ -2,20 +2,29 @@
 #include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>   // для fminf, fmaxf
 
-#define GL_CHECK(expr) expr
-
-// Размеры окна
-const int WINDOW_WIDTH = 1920;
-const int WINDOW_HEIGHT = 1080;
+// Размеры окна (могут меняться)
+int WINDOW_WIDTH = 1920;
+int WINDOW_HEIGHT = 1080;
 
 // Параметры игрового поля
 const int FIELD_SIZE = 832;          // размер поля (внутренний)
 const int BORDER_WIDTH = 4;          // ширина обводки в пикселях
-const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 424
+const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
 
-// --- ДОБАВЛЕНО: размер квадрата в центре ---
+// Параметры игрока (квадрат)
 const int SQUARE_SIZE = 64;
+const float PLAYER_SPEED = 175.0f;   // пикселей в секунду
+
+// Структура игрока
+typedef struct {
+    float x, y;   // координаты центра (пиксели, относительно окна)
+} Player;
+
+// Координаты поля (левая верхняя точка чёрного поля)
+int fieldX = 0, fieldY = 0;
+int outerX = 0, outerY = 0;
 
 // Функция для загрузки и компиляции шейдера
 GLuint load_shader(const char *source, GLenum type) {
@@ -89,6 +98,29 @@ void ortho_projection(float left, float right, float bottom, float top, float *m
     }
 }
 
+// Обновление проекции и координат поля при изменении размера окна
+void update_projection_and_field(GLuint projLoc, int width, int height) {
+    WINDOW_WIDTH = width;
+    WINDOW_HEIGHT = height;
+    float projection[16];
+    ortho_projection(0.0f, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT, 0.0f, projection);
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, projection);
+
+    // Пересчёт координат поля (центрирование)
+    fieldX = (WINDOW_WIDTH - FIELD_SIZE) / 2;
+    fieldY = (WINDOW_HEIGHT - FIELD_SIZE) / 2;
+    outerX = fieldX - BORDER_WIDTH;
+    outerY = fieldY - BORDER_WIDTH;
+}
+
+// Callback изменения размера окна
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
+    // Получим uniform-переменную проекции (необходимо передать через user pointer или глобальную)
+    GLuint projLoc = *(GLuint*)glfwGetWindowUserPointer(window);
+    update_projection_and_field(projLoc, width, height);
+}
+
 int main(void) {
     // Инициализация GLFW
     if (!glfwInit()) {
@@ -121,6 +153,13 @@ int main(void) {
     GLint modelLoc = glGetUniformLocation(shaderProgram, "uModel");
     GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
 
+    // Передаём projLoc в callback через user pointer
+    glfwSetWindowUserPointer(window, &projLoc);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+    // Начальная проекция и координаты поля
+    update_projection_and_field(projLoc, WINDOW_WIDTH, WINDOW_HEIGHT);
+
     // Создание VAO, VBO для единичного квадрата
     float vertices[] = {
         -0.5f, -0.5f,
@@ -147,31 +186,57 @@ int main(void) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    // Проекционная матрица (пиксельные координаты)
-    float projection[16];
-    ortho_projection(0.0f, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT, 0.0f, projection);
-    glUniformMatrix4fv(projLoc, 1, GL_FALSE, projection);
-
-    // Координаты поля
-    int fieldX = (WINDOW_WIDTH - FIELD_SIZE) / 2;
-    int fieldY = (WINDOW_HEIGHT - FIELD_SIZE) / 2;
-    int outerX = fieldX - BORDER_WIDTH;
-    int outerY = fieldY - BORDER_WIDTH;
-
+    // Цвета
     float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
-
-    // --- Цвет для квадрата ---
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
 
+    // Инициализация игрока в центре поля
+    Player player;
+    player.x = fieldX + FIELD_SIZE / 2.0f;
+    player.y = fieldY + FIELD_SIZE / 2.0f;
+
+    // Переменные для delta time
+    double lastTime = glfwGetTime();
+
+    // Основной цикл
     while (!glfwWindowShouldClose(window)) {
+        double currentTime = glfwGetTime();
+        float deltaTime = (float)(currentTime - lastTime);
+        lastTime = currentTime;
+
+        // --- Обработка ввода ---
+        float dx = 0.0f, dy = 0.0f;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
+        if (dx != 0.0f || dy != 0.0f) {
+            // Нормализуем для диагонального движения
+            float len = sqrtf(dx*dx + dy*dy);
+            dx /= len;
+            dy /= len;
+            player.x += dx * PLAYER_SPEED * deltaTime;
+            player.y += dy * PLAYER_SPEED * deltaTime;
+        }
+
+        // Ограничение движения границами поля (с учётом половины размера квадрата)
+        float half = SQUARE_SIZE / 2.0f;
+        float minX = fieldX + half;
+        float maxX = fieldX + FIELD_SIZE - half;
+        float minY = fieldY + half;
+        float maxY = fieldY + FIELD_SIZE - half;
+        player.x = fmaxf(minX, fminf(maxX, player.x));
+        player.y = fmaxf(minY, fminf(maxY, player.y));
+
+        // --- Отрисовка ---
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
         glBindVertexArray(VAO);
 
-        // Отрисовка серого внешнего прямоугольника (обводка)
+        // Обводка (серый)
         {
             float model[16] = {0};
             float cx = outerX + OUTER_SIZE / 2.0f;
@@ -187,7 +252,7 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Отрисовка чёрного внутреннего прямоугольника (поле)
+        // Поле (чёрный)
         {
             float model[16] = {0};
             float cx = fieldX + FIELD_SIZE / 2.0f;
@@ -203,17 +268,15 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // --- ДОБАВЛЕНО: отрисовка зелёного квадрата в центре поля ---
+        // Игрок (зелёный квадрат)
         {
             float model[16] = {0};
-            float cx = fieldX + FIELD_SIZE / 2.0f;
-            float cy = fieldY + FIELD_SIZE / 2.0f;
             model[0] = SQUARE_SIZE;
             model[5] = SQUARE_SIZE;
             model[10] = 1.0f;
             model[15] = 1.0f;
-            model[12] = cx;
-            model[13] = cy;
+            model[12] = player.x;
+            model[13] = player.y;
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
             glUniform4fv(colorLoc, 1, green);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -223,6 +286,7 @@ int main(void) {
         glfwPollEvents();
     }
 
+    // Очистка ресурсов
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
