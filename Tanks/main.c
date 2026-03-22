@@ -2,31 +2,68 @@
 #include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>   // для fminf, fmaxf
+#include <math.h>
 
-// Размеры окна (могут меняться)
-int WINDOW_WIDTH = 1920;
-int WINDOW_HEIGHT = 1080;
+// ------------------ Константы ------------------
+#define WINDOW_WIDTH_INIT 1920    // начальная ширина окна
+#define WINDOW_HEIGHT_INIT 1080   // начальная высота окна
 
-// Параметры игрового поля
-const int FIELD_SIZE = 832;          // размер поля (внутренний)
-const int BORDER_WIDTH = 4;          // ширина обводки в пикселях
+const int FIELD_SIZE = 832;          // размер игрового поля (внутренний чёрный квадрат)
+const int BORDER_WIDTH = 4;          // ширина серой обводки
 const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
 
-// Параметры игрока (квадрат)
-const int SQUARE_SIZE = 64;
-const float PLAYER_SPEED = 175.0f;   // пикселей в секунду
+const int PLAYER_SIZE = 64;          // размер игрока (квадрат)
+const float PLAYER_SPEED = 250.0f;   // скорость игрока (пикселей/сек)
+const float BULLET_SPEED = 800.0f;   // скорость пули
+const float BULLET_WIDTH = 20.0f;    // ширина пули
+const float BULLET_HEIGHT = 10.0f;    // высота пули
+const float SHOOT_DELAY = 0.4f;      // задержка выстрела
 
-// Структура игрока
+// ------------------ Структуры ------------------
 typedef struct {
-    float x, y;   // координаты центра (пиксели, относительно окна)
+    float x, y;          // центр (пиксели, относительно окна)
 } Player;
 
-// Координаты поля (левая верхняя точка чёрного поля)
-int fieldX = 0, fieldY = 0;
-int outerX = 0, outerY = 0;
+typedef struct {
+    float x, y;          // центр пули
+    float dirX, dirY;    // направление (нормализованное)
+    int active;          // 1 - активна, 0 - неактивна
+} Bullet;
 
-// Функция для загрузки и компиляции шейдера
+// ------------------ Глобальные переменные ------------------
+int windowWidth = WINDOW_WIDTH_INIT;
+int windowHeight = WINDOW_HEIGHT_INIT;
+int fieldX = 0, fieldY = 0;    // верхний левый угол чёрного поля
+int outerX = 0, outerY = 0;    // верхний левый угол серой обводки
+
+// ------------------ Прототипы функций ------------------
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+void update_projection_and_field(GLuint projLoc, int width, int height);
+GLuint load_shader(const char *source, GLenum type);
+GLuint create_program(const char *vertexSource, const char *fragmentSource);
+void ortho_projection(float left, float right, float bottom, float top, float *matrix);
+
+// ------------------ Шейдеры ------------------
+const char *vertexShaderSource =
+    "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "uniform mat4 uProjection;\n"
+    "uniform mat4 uModel;\n"
+    "void main()\n"
+    "{\n"
+    "   gl_Position = uProjection * uModel * vec4(aPos, 0.0, 1.0);\n"
+    "}\n";
+
+const char *fragmentShaderSource =
+    "#version 330 core\n"
+    "out vec4 FragColor;\n"
+    "uniform vec4 uColor;\n"
+    "void main()\n"
+    "{\n"
+    "   FragColor = uColor;\n"
+    "}\n";
+
+// ------------------ Функции работы с шейдерами ------------------
 GLuint load_shader(const char *source, GLenum type) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
@@ -42,7 +79,7 @@ GLuint load_shader(const char *source, GLenum type) {
     return shader;
 }
 
-// Функция для создания шейдерной программы
+// ------------------ Программа с шейдерами ------------------
 GLuint create_program(const char *vertexSource, const char *fragmentSource) {
     GLuint vertex = load_shader(vertexSource, GL_VERTEX_SHADER);
     GLuint fragment = load_shader(fragmentSource, GL_FRAGMENT_SHADER);
@@ -63,28 +100,7 @@ GLuint create_program(const char *vertexSource, const char *fragmentSource) {
     return program;
 }
 
-// Вершинный шейдер
-const char *vertexShaderSource =
-    "#version 330 core\n"
-    "layout (location = 0) in vec2 aPos;\n"
-    "uniform mat4 uProjection;\n"
-    "uniform mat4 uModel;\n"
-    "void main()\n"
-    "{\n"
-    "   gl_Position = uProjection * uModel * vec4(aPos, 0.0, 1.0);\n"
-    "}\n";
-
-// Фрагментный шейдер
-const char *fragmentShaderSource =
-    "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "uniform vec4 uColor;\n"
-    "void main()\n"
-    "{\n"
-    "   FragColor = uColor;\n"
-    "}\n";
-
-// Функция для вычисления ортографической проекции (пиксельные координаты -> NDC)
+// ------------------ Матрица ортографической проекции (пиксельные координаты) ------------------
 void ortho_projection(float left, float right, float bottom, float top, float *matrix) {
     matrix[0] = 2.0f / (right - left);
     matrix[5] = 2.0f / (top - bottom);
@@ -98,29 +114,30 @@ void ortho_projection(float left, float right, float bottom, float top, float *m
     }
 }
 
-// Обновление проекции и координат поля при изменении размера окна
+// ------------------ Обновление проекции и координат поля при изменении размера окна ------------------
 void update_projection_and_field(GLuint projLoc, int width, int height) {
-    WINDOW_WIDTH = width;
-    WINDOW_HEIGHT = height;
+    windowWidth = width;
+    windowHeight = height;
     float projection[16];
-    ortho_projection(0.0f, (float)WINDOW_WIDTH, (float)WINDOW_HEIGHT, 0.0f, projection);
+    ortho_projection(0.0f, (float)windowWidth, (float)windowHeight, 0.0f, projection);
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, projection);
 
     // Пересчёт координат поля (центрирование)
-    fieldX = (WINDOW_WIDTH - FIELD_SIZE) / 2;
-    fieldY = (WINDOW_HEIGHT - FIELD_SIZE) / 2;
+    fieldX = (windowWidth - FIELD_SIZE) / 2;
+    fieldY = (windowHeight - FIELD_SIZE) / 2;
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
 }
 
-// Callback изменения размера окна
+// ------------------ Callback изменения размера окна ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
-    // Получим uniform-переменную проекции (необходимо передать через user pointer или глобальную)
+    // Получаем uniform-переменную проекции, сохранённую в user pointer
     GLuint projLoc = *(GLuint*)glfwGetWindowUserPointer(window);
     update_projection_and_field(projLoc, width, height);
 }
 
+// ------------------ Основная функция ------------------
 int main(void) {
     // Инициализация GLFW
     if (!glfwInit()) {
@@ -130,37 +147,39 @@ int main(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // для macOS
 
-    GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Танчики", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(windowWidth, windowHeight, "Танчики", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Не удалось создать окно\n");
         glfwTerminate();
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
 
+    // Загрузка glad
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         fprintf(stderr, "Не удалось загрузить glad\n");
         return -1;
     }
 
+    // Создание шейдерной программы
     GLuint shaderProgram = create_program(vertexShaderSource, fragmentShaderSource);
     glUseProgram(shaderProgram);
 
+    // Получение локаций uniform-переменных
     GLint projLoc = glGetUniformLocation(shaderProgram, "uProjection");
     GLint modelLoc = glGetUniformLocation(shaderProgram, "uModel");
     GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
 
-    // Передаём projLoc в callback через user pointer
+    // Сохраняем projLoc в user pointer для доступа в callback
     glfwSetWindowUserPointer(window, &projLoc);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    // Начальная проекция и координаты поля
-    update_projection_and_field(projLoc, WINDOW_WIDTH, WINDOW_HEIGHT);
+    // Начальная настройка проекции и координат поля
+    update_projection_and_field(projLoc, windowWidth, windowHeight);
 
-    // Создание VAO, VBO для единичного квадрата
+    // ------------------ Создание VAO для квадрата ------------------
     float vertices[] = {
         -0.5f, -0.5f,
          0.5f, -0.5f,
@@ -186,42 +205,51 @@ int main(void) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    // Цвета
+    // ------------------ Цвета ------------------
     float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
+    float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 
-    // Инициализация игрока в центре поля
+    // ------------------ Инициализация игрока (левый нижний угол) ------------------
     Player player;
-    player.x = fieldX + FIELD_SIZE / 2.0f;
-    player.y = fieldY + FIELD_SIZE / 2.0f;
+    player.x = (fieldX + FIELD_SIZE/ 2.0f) - 128;
+    player.y = fieldY + FIELD_SIZE; // нижний край (Y увеличивается вниз)
 
-    // Переменные для delta time
+    // ------------------ Направление последнего движения (по умолчанию вверх) ------------------
+    float lastDirX = 0.0f, lastDirY = -1.0f; // вверх (уменьшение Y)
+
+    // ------------------ Пули ------------------
+    Bullet bullet;
+    bullet.active = 0;
+    double lastShootTime = 0.0;
+
+    // ------------------ Переменные для delta time ------------------
     double lastTime = glfwGetTime();
 
-    // Основной цикл
+    // ------------------ Основной цикл ------------------
     while (!glfwWindowShouldClose(window)) {
+        // Вычисление delta time
         double currentTime = glfwGetTime();
         float deltaTime = (float)(currentTime - lastTime);
         lastTime = currentTime;
 
-        // --- Обработка ввода ---
+        // ---------- Обработка движения игрока ----------
         float dx = 0.0f, dy = 0.0f;
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
         else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
         else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
         else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
-        if (dx != 0.0f || dy != 0.0f) {
-            // Нормализуем для диагонального движения
-            float len = sqrtf(dx*dx + dy*dy);
-            dx /= len;
-            dy /= len;
-            player.x += dx * PLAYER_SPEED * deltaTime;
-            player.y += dy * PLAYER_SPEED * deltaTime;
+
+        player.x += dx * PLAYER_SPEED * deltaTime;
+        player.y += dy * PLAYER_SPEED * deltaTime;
+        if (dx || dy) {
+            lastDirX = dx;
+            lastDirY = dy;
         }
 
-        // Ограничение движения границами поля (с учётом половины размера квадрата)
-        float half = SQUARE_SIZE / 2.0f;
+        // Ограничение игрока границами поля
+        float half = PLAYER_SIZE / 2.0f;
         float minX = fieldX + half;
         float maxX = fieldX + FIELD_SIZE - half;
         float minY = fieldY + half;
@@ -229,14 +257,58 @@ int main(void) {
         player.x = fmaxf(minX, fminf(maxX, player.x));
         player.y = fmaxf(minY, fminf(maxY, player.y));
 
-        // --- Отрисовка ---
+        // ---------- Стрельба ----------
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            if (currentTime - lastShootTime >= SHOOT_DELAY) {
+                if (!bullet.active) {
+                    bullet.active = 1;
+                    if (lastDirX) {
+                        bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
+                        bullet.y = player.y;
+                        bullet.dirX = lastDirX;
+                        bullet.dirY = lastDirY;
+                        lastShootTime = currentTime;
+                    }
+                    if (lastDirY) {
+                        bullet.x = player.x;
+                        bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
+                        bullet.dirX = lastDirX;
+                        bullet.dirY = lastDirY;
+                        lastShootTime = currentTime;
+                    }
+                    
+                }
+            }
+        }
+
+        // ---------- Обновление позиций пуль ----------
+        if (bullet.active) {
+            bullet.x += bullet.dirX * BULLET_SPEED * deltaTime;
+            bullet.y += bullet.dirY * BULLET_SPEED * deltaTime;
+
+            // Проверка выхода за границы поля
+            float halfW = BULLET_WIDTH / 2.0f;
+            float halfH = BULLET_HEIGHT / 2.0f;
+            float minXb = fieldX + halfW;
+            float maxXb = fieldX + FIELD_SIZE - halfW;
+            float minYb = fieldY + halfH;
+            float maxYb = fieldY + FIELD_SIZE - halfH;
+
+            if (bullet.x < minXb || bullet.x > maxXb ||
+                bullet.y < minYb || bullet.y > maxYb) {
+                bullet.active = 0;
+                
+            }
+        }
+
+        // ---------- Отрисовка ----------
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
         glBindVertexArray(VAO);
 
-        // Обводка (серый)
+        // 1. Серая обводка
         {
             float model[16] = {0};
             float cx = outerX + OUTER_SIZE / 2.0f;
@@ -252,7 +324,7 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Поле (чёрный)
+        // 2. Чёрное поле
         {
             float model[16] = {0};
             float cx = fieldX + FIELD_SIZE / 2.0f;
@@ -268,11 +340,11 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Игрок (зелёный квадрат)
+        // 3. Игрок (зелёный квадрат)
         {
             float model[16] = {0};
-            model[0] = SQUARE_SIZE;
-            model[5] = SQUARE_SIZE;
+            model[0] = PLAYER_SIZE;
+            model[5] = PLAYER_SIZE;
             model[10] = 1.0f;
             model[15] = 1.0f;
             model[12] = player.x;
@@ -280,6 +352,34 @@ int main(void) {
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
             glUniform4fv(colorLoc, 1, green);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
+
+        // 4. Пули (красные прямоугольники)
+        if (bullet.active) {
+            if (bullet.dirX) {
+                float model[16] = {0};
+                model[0] = BULLET_WIDTH;
+                model[5] = BULLET_HEIGHT;
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = bullet.x;
+                model[13] = bullet.y;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                glUniform4fv(colorLoc, 1, red);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            } else if (bullet.dirY) {
+                float model[16] = {0};
+                model[0] = BULLET_HEIGHT;
+                model[5] = BULLET_WIDTH;
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = bullet.x;
+                model[13] = bullet.y;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                glUniform4fv(colorLoc, 1, red);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            }
+            
         }
 
         glfwSwapBuffers(window);
