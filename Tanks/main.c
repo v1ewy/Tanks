@@ -6,49 +6,70 @@
 #include <time.h>
 
 // ------------------ Константы ------------------
-#define WINDOW_WIDTH_INIT 1920    // начальная ширина окна
-#define WINDOW_HEIGHT_INIT 1080   // начальная высота окна
-#define MAX_WALLS 15
+#define WINDOW_WIDTH_INIT 1920
+#define WINDOW_HEIGHT_INIT 1080
 
-const int FIELD_SIZE = 832;          // размер игрового поля (внутренний чёрный квадрат)
-const int BORDER_WIDTH = 4;          // ширина серой обводки
-const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
+const int FIELD_SIZE = 832;
+const int BORDER_WIDTH = 4;
+const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH;
 
-const int PLAYER_SIZE = 60;          // размер игрока (квадрат)
-const float PLAYER_SPEED = 250.0f;   // скорость игрока (пикселей/сек)
+const int PLAYER_SIZE = 60;
+const float PLAYER_SPEED = 250.0f;
 
-const float BULLET_SPEED = 800.0f;   // скорость пули
-const float BULLET_WIDTH = 20.0f;    // ширина пули
-const float BULLET_HEIGHT = 10.0f;    // высота пули
-const float SHOOT_DELAY = 0.4f;      // задержка выстрела
+const float BULLET_SPEED = 800.0f;
+const float BULLET_WIDTH = 20.0f;
+const float BULLET_HEIGHT = 10.0f;
+const float SHOOT_DELAY = 0.4f;
 
 const int WALL_SIZE = 64;
 
+// ------------------ Параметры карты ------------------
+#define GRID_SIZE 13
+#define CELL_SIZE 64
+
+// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена
+int map[GRID_SIZE][GRID_SIZE] = {
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,0,0,1,0,0,0,0,0,0,0,0},
+};
+
 // ------------------ Структуры ------------------
 typedef struct {
-    float x, y;          // центр
+    float x, y;
 } Player;
 
 typedef struct {
-    float x, y;          // центр пули
-    float dirX, dirY;    // направление (нормализованное)
-    int active;          // 1 - активна, 0 - неактивна
+    float x, y;
+    float dirX, dirY;
+    int active;
 } Bullet;
 
 typedef struct {
-    float x, y;          // центр
+    float x, y;
     float width, height;
 } Wall;
 
 // ------------------ Глобальные переменные ------------------
 int windowWidth = WINDOW_WIDTH_INIT;
 int windowHeight = WINDOW_HEIGHT_INIT;
-int fieldX = 0, fieldY = 0;    // верхний левый угол чёрного поля
-int outerX = 0, outerY = 0;    // верхний левый угол серой обводки
+int fieldX = 0, fieldY = 0;
+int outerX = 0, outerY = 0;
 
 Player player;
-Wall walls[MAX_WALLS];
 Bullet bullet;
+Wall walls[GRID_SIZE * GRID_SIZE];
+int wallCount = 0;
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -57,7 +78,7 @@ GLuint load_shader(const char *source, GLenum type);
 GLuint create_program(const char *vertexSource, const char *fragmentSource);
 void ortho_projection(float left, float right, float bottom, float top, float *matrix);
 int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2);
-void generate_walls(void);
+void load_map(void);
 
 // ------------------ Шейдеры ------------------
 const char *vertexShaderSource =
@@ -95,7 +116,6 @@ GLuint load_shader(const char *source, GLenum type) {
     return shader;
 }
 
-// ------------------ Программа с шейдерами ------------------
 GLuint create_program(const char *vertexSource, const char *fragmentSource) {
     GLuint vertex = load_shader(vertexSource, GL_VERTEX_SHADER);
     GLuint fragment = load_shader(fragmentSource, GL_FRAGMENT_SHADER);
@@ -116,7 +136,7 @@ GLuint create_program(const char *vertexSource, const char *fragmentSource) {
     return program;
 }
 
-// ------------------ Матрица ортографической проекции (пиксельные координаты) ------------------
+// ------------------ Матрица ортографической проекции ------------------
 void ortho_projection(float left, float right, float bottom, float top, float *matrix) {
     matrix[0] = 2.0f / (right - left);
     matrix[5] = 2.0f / (top - bottom);
@@ -130,7 +150,34 @@ void ortho_projection(float left, float right, float bottom, float top, float *m
     }
 }
 
-// ------------------ Обновление проекции и координат поля при изменении размера окна ------------------
+// ------------------ Проверка коллизии прямоугольников ------------------
+int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
+    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+}
+
+// ------------------ Загрузка карты (создание стен и позиции игрока) ------------------
+void load_map(void) {
+    wallCount = 0;
+    
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (map[j][i] == 2) {
+                // Стена
+                walls[wallCount].width = WALL_SIZE;
+                walls[wallCount].height = WALL_SIZE;
+                walls[wallCount].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                walls[wallCount].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                wallCount++;
+            } else if (map[j][i] == 1) {
+                // Игрок
+                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+            }
+        }
+    }
+}
+
+// ------------------ Обновление проекции и поля при изменении размера окна ------------------
 void update_projection_and_field(GLuint projLoc, int width, int height) {
     windowWidth = width;
     windowHeight = height;
@@ -143,19 +190,11 @@ void update_projection_and_field(GLuint projLoc, int width, int height) {
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
 
-    generate_walls();
+    load_map();
 
     float half = PLAYER_SIZE / 2.0f;
-    float minX = fieldX + half;
-    float maxX = fieldX + FIELD_SIZE - half;
-    float minY = fieldY + half;
-    float maxY = fieldY + FIELD_SIZE - half;
-    player.x = fmaxf(minX, fminf(maxX, player.x));
-    player.y = fmaxf(minY, fminf(maxY, player.y));
-
-    // Проверка коллизии игрока с любой стеной
     int collision = 0;
-    for (int i = 0; i < MAX_WALLS; i++) {
+    for (int i = 0; i < wallCount; i++) {
         if (rect_collision(player.x - half, player.y - half, PLAYER_SIZE, PLAYER_SIZE,
                            walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
                            walls[i].width, walls[i].height)) {
@@ -163,64 +202,23 @@ void update_projection_and_field(GLuint projLoc, int width, int height) {
             break;
         }
     }
+    
     if (collision) {
-        generate_walls(); // перегенерируем стены
-    }
-}
-
-
-int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
-    return ((x1 < x2 + w2) && (x1 + w1 > x2) && (y1 < y2 + h2) && (y1 + h1 > y2));
-}
-
-void generate_walls(void) {
-    srand((unsigned int)time(NULL));
-    const int cellsCount = FIELD_SIZE / WALL_SIZE; // 13
-    const float cellSize = (float)WALL_SIZE;       // 64.0f
-
-    // Определяем клетку игрока
-    int i_player = (int)((player.x - fieldX) / cellSize);
-    int j_player = (int)((player.y - fieldY) / cellSize);
-    if (i_player < 0) i_player = 0;
-    if (i_player >= cellsCount) i_player = cellsCount - 1;
-    if (j_player < 0) j_player = 0;
-    if (j_player >= cellsCount) j_player = cellsCount - 1;
-
-    // Массив для отслеживания занятых клеток (для стен)
-    int usedCells[MAX_WALLS][2];
-
-    for (int w = 0; w < MAX_WALLS; w++) {
-        int i, j;
-        int collides;
-        do {
-            collides = 0;
-            i = rand() % cellsCount;
-            j = rand() % cellsCount;
-
-            if (i == i_player && j == j_player) collides = 1;
-
-            for (int k = 0; k < w; k++) {
-                if (usedCells[k][0] == i && usedCells[k][1] == j) {
-                    collides = 1;
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (map[j][i] == 0) {
+                    player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                    player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
                     break;
                 }
             }
-        } while (collides);
-
-        usedCells[w][0] = i;
-        usedCells[w][1] = j;
-
-        walls[w].width = WALL_SIZE;
-        walls[w].height = WALL_SIZE;
-        walls[w].x = fieldX + i * cellSize + cellSize / 2.0f;
-        walls[w].y = fieldY + j * cellSize + cellSize / 2.0f;
+        }
     }
 }
 
 // ------------------ Callback изменения размера окна ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
-    // Получаем uniform-переменную проекции, сохранённую в user pointer
     GLuint projLoc = *(GLuint*)glfwGetWindowUserPointer(window);
     update_projection_and_field(projLoc, width, height);
 }
@@ -235,7 +233,7 @@ int main(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // для macOS
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
     GLFWwindow *window = glfwCreateWindow(windowWidth, windowHeight, "Танчики", NULL, NULL);
     if (!window) {
@@ -245,26 +243,22 @@ int main(void) {
     }
     glfwMakeContextCurrent(window);
 
-    // Загрузка glad
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         fprintf(stderr, "Не удалось загрузить glad\n");
         return -1;
     }
 
-    // Создание шейдерной программы
     GLuint shaderProgram = create_program(vertexShaderSource, fragmentShaderSource);
     glUseProgram(shaderProgram);
 
-    // Получение локаций uniform-переменных
     GLint projLoc = glGetUniformLocation(shaderProgram, "uProjection");
     GLint modelLoc = glGetUniformLocation(shaderProgram, "uModel");
     GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
 
-    // Сохраняем projLoc в user pointer для доступа в callback
     glfwSetWindowUserPointer(window, &projLoc);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    // Начальная настройка проекции и координат поля
+    // Начальная настройка проекции и координат поля (вызовет load_map)
     update_projection_and_field(projLoc, windowWidth, windowHeight);
 
     // ------------------ Создание VAO для квадрата ------------------
@@ -299,24 +293,16 @@ int main(void) {
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
     float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 
-    // ------------------ Инициализация игрока ------------------
-    player.x = fieldX + 288;
-    player.y = fieldY + 800;
-
     // ------------------ Инициализация пули ------------------
     bullet.active = 0;
     float lastDirX = 0.0f, lastDirY = -1.0f;
     double lastShootTime = 0.0;
-    
-    // ------------------ Инициализация стены ------------------
-    generate_walls();
 
     // ------------------ Переменные для delta time ------------------
     double lastTime = glfwGetTime();
 
     // ------------------ Основной цикл ------------------
     while (!glfwWindowShouldClose(window)) {
-        // Вычисление delta time
         double currentTime = glfwGetTime();
         float deltaTime = (float)(currentTime - lastTime);
         lastTime = currentTime;
@@ -333,13 +319,10 @@ int main(void) {
             lastDirY = dy;
 
             float half = PLAYER_SIZE / 2.0f;
-            float newX = player.x;
-            float newY = player.y;
-
             // Движение по X
-            newX = player.x + dx * PLAYER_SPEED * deltaTime;
+            float newX = player.x + dx * PLAYER_SPEED * deltaTime;
             int collideX = 0;
-            for (int i = 0; i < MAX_WALLS; i++) {
+            for (int i = 0; i < wallCount; i++) {
                 if (rect_collision(newX - half, player.y - half, PLAYER_SIZE, PLAYER_SIZE,
                                    walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
                                    walls[i].width, walls[i].height)) {
@@ -351,10 +334,10 @@ int main(void) {
                 player.x = newX;
             }
 
-            // Движение по Y (с уже обновлённой X)
-            newY = player.y + dy * PLAYER_SPEED * deltaTime;
+            // Движение по Y
+            float newY = player.y + dy * PLAYER_SPEED * deltaTime;
             int collideY = 0;
-            for (int i = 0; i < MAX_WALLS; i++) {
+            for (int i = 0; i < wallCount; i++) {
                 if (rect_collision(player.x - half, newY - half, PLAYER_SIZE, PLAYER_SIZE,
                                    walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
                                    walls[i].width, walls[i].height)) {
@@ -367,7 +350,7 @@ int main(void) {
             }
         }
 
-        // Ограничение границами поля
+        // Ограничение игрока границами поля
         float half = PLAYER_SIZE / 2.0f;
         float minX = fieldX + half;
         float maxX = fieldX + FIELD_SIZE - half;
@@ -375,33 +358,33 @@ int main(void) {
         float maxY = fieldY + FIELD_SIZE - half;
         player.x = fmaxf(minX, fminf(maxX, player.x));
         player.y = fmaxf(minY, fminf(maxY, player.y));
-        
+
         // ---------- Стрельба ----------
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
             if (currentTime - lastShootTime >= SHOOT_DELAY) {
                 if (!bullet.active) {
                     bullet.active = 1;
-                    if (lastDirX) {
+                    if (lastDirX != 0.0f) {
                         bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
                         bullet.y = player.y;
-                    }
-                    if (lastDirY) {
+                        bullet.dirX = lastDirX;
+                        bullet.dirY = 0.0f;
+                    } else if (lastDirY != 0.0f) {
                         bullet.x = player.x;
                         bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
+                        bullet.dirX = 0.0f;
+                        bullet.dirY = lastDirY;
                     }
-                    bullet.dirX = lastDirX;
-                    bullet.dirY = lastDirY;
                     lastShootTime = currentTime;
                 }
             }
         }
 
-        // ---------- Обновление позиций пуль ----------
+        // ---------- Обновление пули ----------
         if (bullet.active) {
             bullet.x += bullet.dirX * BULLET_SPEED * deltaTime;
             bullet.y += bullet.dirY * BULLET_SPEED * deltaTime;
 
-            // Проверка выхода за границы поля
             float halfW = BULLET_WIDTH / 2.0f;
             float halfH = BULLET_HEIGHT / 2.0f;
             float minXb = fieldX + halfW;
@@ -413,19 +396,20 @@ int main(void) {
                 bullet.y < minYb || bullet.y > maxYb) {
                 bullet.active = 0;
             }
-            
-            int hitWall = 0;
-            for (int i = 0; i < MAX_WALLS; i++) {
-                if (rect_collision(bullet.x - halfW, bullet.y - halfH, BULLET_WIDTH, BULLET_HEIGHT,
-                                   walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
-                                   walls[i].width, walls[i].height)) {
-                    hitWall = 1;
-                    break;
+
+            if (bullet.active) {
+                int hitWall = 0;
+                for (int i = 0; i < wallCount; i++) {
+                    if (rect_collision(bullet.x - halfW, bullet.y - halfH, BULLET_WIDTH, BULLET_HEIGHT,
+                                       walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
+                                       walls[i].width, walls[i].height)) {
+                        hitWall = 1;
+                        break;
+                    }
                 }
-            }
-            
-            if (hitWall) {
-                bullet.active = 0;
+                if (hitWall) {
+                    bullet.active = 0;
+                }
             }
         }
 
@@ -467,9 +451,9 @@ int main(void) {
             glUniform4fv(colorLoc, 1, black);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
-        
-        // Стена (серый квадрат)
-        for (int i = 0; i < MAX_WALLS; i++) {
+
+        // Стены
+        for (int i = 0; i < wallCount; i++) {
             float model[16] = {0};
             model[0] = walls[i].width;
             model[5] = walls[i].height;
@@ -482,7 +466,7 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Игрок (зелёный квадрат)
+        // Игрок
         {
             float model[16] = {0};
             model[0] = PLAYER_SIZE;
@@ -496,13 +480,13 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Пуля (красный прямоугольник)
+        // Пуля
         if (bullet.active) {
             float model[16] = {0};
-            if (bullet.dirX) {
+            if (bullet.dirX != 0) {
                 model[0] = BULLET_WIDTH;
                 model[5] = BULLET_HEIGHT;
-            } else if (bullet.dirY) {
+            } else {
                 model[0] = BULLET_HEIGHT;
                 model[5] = BULLET_WIDTH;
             }
