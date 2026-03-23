@@ -14,7 +14,7 @@ const int FIELD_SIZE = 832;          // размер игрового поля (
 const int BORDER_WIDTH = 4;          // ширина серой обводки
 const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
 
-const int PLAYER_SIZE = 64;          // размер игрока (квадрат)
+const int PLAYER_SIZE = 60;          // размер игрока (квадрат)
 const float PLAYER_SPEED = 250.0f;   // скорость игрока (пикселей/сек)
 
 const float BULLET_SPEED = 800.0f;   // скорость пули
@@ -170,7 +170,7 @@ void update_projection_and_field(GLuint projLoc, int width, int height) {
 
 
 int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
-    return (x1 <= x2 + w2 && x1 + w1 >= x2 && y1 <= y2 + h2 && y1 + h1 >= y2);
+    return ((x1 < x2 + w2) && (x1 + w1 > x2) && (y1 < y2 + h2) && (y1 + h1 > y2));
 }
 
 void generate_walls(void) {
@@ -300,8 +300,8 @@ int main(void) {
     float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
 
     // ------------------ Инициализация игрока ------------------
-    player.x = (fieldX + FIELD_SIZE / 2.0f) - 128;
-    player.y = fieldY + FIELD_SIZE;
+    player.x = fieldX + 288;
+    player.y = fieldY + 800;
 
     // ------------------ Инициализация пули ------------------
     bullet.active = 0;
@@ -324,14 +324,11 @@ int main(void) {
         // ---------- Обработка движения игрока ----------
         float dx = 0.0f, dy = 0.0f;
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
+        else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
 
-        if (dx != 0.0f || dy != 0.0f) {
-            float len = sqrtf(dx*dx + dy*dy);
-            dx /= len;
-            dy /= len;
+        if (dx || dy) {
             lastDirX = dx;
             lastDirY = dy;
 
@@ -387,18 +384,14 @@ int main(void) {
                     if (lastDirX) {
                         bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
                         bullet.y = player.y;
-                        bullet.dirX = lastDirX;
-                        bullet.dirY = lastDirY;
-                        lastShootTime = currentTime;
                     }
                     if (lastDirY) {
                         bullet.x = player.x;
                         bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
-                        bullet.dirX = lastDirX;
-                        bullet.dirY = lastDirY;
-                        lastShootTime = currentTime;
                     }
-                    
+                    bullet.dirX = lastDirX;
+                    bullet.dirY = lastDirY;
+                    lastShootTime = currentTime;
                 }
             }
         }
