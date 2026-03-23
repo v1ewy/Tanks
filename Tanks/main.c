@@ -9,39 +9,40 @@
 #define WINDOW_WIDTH_INIT 1920
 #define WINDOW_HEIGHT_INIT 1080
 
-const int FIELD_SIZE = 832;
+const int FIELD_SIZE = 832;          // 13 * 64
 const int BORDER_WIDTH = 4;
-const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH;
+const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
 
-const int PLAYER_SIZE = 60;
-const float PLAYER_SPEED = 250.0f;
+const int PLAYER_SIZE = 56;
+const float PLAYER_SPEED = 200.0f;
 
 const float BULLET_SPEED = 800.0f;
 const float BULLET_WIDTH = 20.0f;
 const float BULLET_HEIGHT = 10.0f;
 const float SHOOT_DELAY = 0.4f;
 
-const int WALL_SIZE = 64;
+const int BLOCK_SIZE = 64;
 
 // ------------------ Параметры карты ------------------
-#define GRID_SIZE 13
-#define CELL_SIZE 64
+#define GRID_SIZE 13               // 13x13 клеток
+#define CELL_SIZE 64               // размер клетки в пикселях
 
-// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена
+// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва
 int map[GRID_SIZE][GRID_SIZE] = {
+    // Пример: стены по краям, игрок внизу слева
+    {0,0,0,0,0,0,0,0,0,0,0,0,0},
+    {0,0,1,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,0,2,3,4,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,0,1,0,0,0,0,0,0,0,0},
 };
 
 // ------------------ Структуры ------------------
@@ -55,11 +56,6 @@ typedef struct {
     int active;
 } Bullet;
 
-typedef struct {
-    float x, y;
-    float width, height;
-} Wall;
-
 // ------------------ Глобальные переменные ------------------
 int windowWidth = WINDOW_WIDTH_INIT;
 int windowHeight = WINDOW_HEIGHT_INIT;
@@ -68,8 +64,6 @@ int outerX = 0, outerY = 0;
 
 Player player;
 Bullet bullet;
-Wall walls[GRID_SIZE * GRID_SIZE];
-int wallCount = 0;
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -78,6 +72,11 @@ GLuint load_shader(const char *source, GLenum type);
 GLuint create_program(const char *vertexSource, const char *fragmentSource);
 void ortho_projection(float left, float right, float bottom, float top, float *matrix);
 int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2);
+int is_wall(int x, int y);
+int is_water(int x, int y);
+int is_foliage(int x, int y);
+int check_rect_collision_with_map(int who, float cx, float cy, float w, float h);
+int is_player_over_cell(int cellX, int cellY);
 void load_map(void);
 
 // ------------------ Шейдеры ------------------
@@ -150,31 +149,71 @@ void ortho_projection(float left, float right, float bottom, float top, float *m
     }
 }
 
-// ------------------ Проверка коллизии прямоугольников ------------------
-int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
-    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+int is_wall(int x, int y) {
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 1;
+    return map[y][x] == 2;
 }
 
-// ------------------ Загрузка карты (создание стен и позиции игрока) ------------------
-void load_map(void) {
-    wallCount = 0;
+int is_water(int x, int y) {
+    return map[y][x] == 3;
+}
+
+int is_foliage(int x, int y) {
+    return map[y][x] == 4;
+}
+
+// ------------------ Проверка коллизии ------------------
+int check_rect_collision_with_map(int who, float cx, float cy, float w, float h) {
+    float halfW = w / 2.0f;
+    float halfH = h / 2.0f;
+    int left   = (int)((cx - halfW - fieldX) / CELL_SIZE);
+    int right  = (int)((cx + halfW - fieldX) / CELL_SIZE);
+    int top    = (int)((cy - halfH - fieldY) / CELL_SIZE);
+    int bottom = (int)((cy + halfH - fieldY) / CELL_SIZE);
     
-    for (int j = 0; j < GRID_SIZE; j++) {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            if (map[j][i] == 2) {
-                // Стена
-                walls[wallCount].width = WALL_SIZE;
-                walls[wallCount].height = WALL_SIZE;
-                walls[wallCount].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                walls[wallCount].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                wallCount++;
-            } else if (map[j][i] == 1) {
-                // Игрок
-                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+    for (int j = top; j <= bottom; j++) {
+        for (int i = left; i <= right; i++) {
+            switch (who) {
+                case 1:
+                    if (is_wall(i, j) || is_water(i, j)) return 1;
+                    break;
+                case 2:
+                    if (is_wall(i, j)) return 1;
             }
         }
     }
+    return 0;
+}
+
+// ------------------ Загрузка карты (установка игрока по map) ------------------
+void load_map(void) {
+    // Находим клетку с игроком (значение 1)
+    int found = 0;
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (map[j][i] == 1) {
+                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                found = 1;
+                break;
+            }
+        }
+        if (found) break;
+    }
+    if (!found) {
+        // Если игрока нет на карте, ставим в центр
+        player.x = fieldX + FIELD_SIZE / 2.0f;
+        player.y = fieldY + FIELD_SIZE / 2.0f;
+    }
+    
+    // Ограничиваем игрока границами поля (на случай, если координаты вышли за пределы)
+    float half = PLAYER_SIZE / 2.0f;
+    float minX = fieldX + half;
+    float maxX = fieldX + FIELD_SIZE - half;
+    float minY = fieldY + half;
+    float maxY = fieldY + FIELD_SIZE - half;
+    player.x = fmaxf(minX, fminf(maxX, player.x));
+    player.y = fmaxf(minY, fminf(maxY, player.y));
 }
 
 // ------------------ Обновление проекции и поля при изменении размера окна ------------------
@@ -190,30 +229,8 @@ void update_projection_and_field(GLuint projLoc, int width, int height) {
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
 
+    // Перезагружаем карту
     load_map();
-
-    float half = PLAYER_SIZE / 2.0f;
-    int collision = 0;
-    for (int i = 0; i < wallCount; i++) {
-        if (rect_collision(player.x - half, player.y - half, PLAYER_SIZE, PLAYER_SIZE,
-                           walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
-                           walls[i].width, walls[i].height)) {
-            collision = 1;
-            break;
-        }
-    }
-    
-    if (collision) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                if (map[j][i] == 0) {
-                    player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                    player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                    break;
-                }
-            }
-        }
-    }
 }
 
 // ------------------ Callback изменения размера окна ------------------
@@ -230,6 +247,7 @@ int main(void) {
         fprintf(stderr, "Не удалось инициализировать GLFW\n");
         return -1;
     }
+    
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -292,6 +310,8 @@ int main(void) {
     float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
     float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+    float blue[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    float dark_green[4] = {0.0f, 0.5f, 0.0f, 1.0f};
 
     // ------------------ Инициализация пули ------------------
     bullet.active = 0;
@@ -318,34 +338,14 @@ int main(void) {
             lastDirX = dx;
             lastDirY = dy;
 
-            float half = PLAYER_SIZE / 2.0f;
             // Движение по X
             float newX = player.x + dx * PLAYER_SPEED * deltaTime;
-            int collideX = 0;
-            for (int i = 0; i < wallCount; i++) {
-                if (rect_collision(newX - half, player.y - half, PLAYER_SIZE, PLAYER_SIZE,
-                                   walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
-                                   walls[i].width, walls[i].height)) {
-                    collideX = 1;
-                    break;
-                }
-            }
-            if (!collideX) {
+            if (!check_rect_collision_with_map(1, newX, player.y, PLAYER_SIZE, PLAYER_SIZE)) {
                 player.x = newX;
             }
-
             // Движение по Y
             float newY = player.y + dy * PLAYER_SPEED * deltaTime;
-            int collideY = 0;
-            for (int i = 0; i < wallCount; i++) {
-                if (rect_collision(player.x - half, newY - half, PLAYER_SIZE, PLAYER_SIZE,
-                                   walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
-                                   walls[i].width, walls[i].height)) {
-                    collideY = 1;
-                    break;
-                }
-            }
-            if (!collideY) {
+            if (!check_rect_collision_with_map(1, player.x, newY, PLAYER_SIZE, PLAYER_SIZE)) {
                 player.y = newY;
             }
         }
@@ -369,7 +369,7 @@ int main(void) {
                         bullet.y = player.y;
                         bullet.dirX = lastDirX;
                         bullet.dirY = 0.0f;
-                    } else if (lastDirY != 0.0f) {
+                    } else {
                         bullet.x = player.x;
                         bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
                         bullet.dirX = 0.0f;
@@ -385,6 +385,7 @@ int main(void) {
             bullet.x += bullet.dirX * BULLET_SPEED * deltaTime;
             bullet.y += bullet.dirY * BULLET_SPEED * deltaTime;
 
+            // Проверка выхода за границы поля
             float halfW = BULLET_WIDTH / 2.0f;
             float halfH = BULLET_HEIGHT / 2.0f;
             float minXb = fieldX + halfW;
@@ -397,17 +398,17 @@ int main(void) {
                 bullet.active = 0;
             }
 
+            // Проверка коллизии со стенами
             if (bullet.active) {
-                int hitWall = 0;
-                for (int i = 0; i < wallCount; i++) {
-                    if (rect_collision(bullet.x - halfW, bullet.y - halfH, BULLET_WIDTH, BULLET_HEIGHT,
-                                       walls[i].x - walls[i].width/2, walls[i].y - walls[i].height/2,
-                                       walls[i].width, walls[i].height)) {
-                        hitWall = 1;
-                        break;
-                    }
+                float w, h;
+                if (bullet.dirX != 0) {
+                    w = BULLET_WIDTH;
+                    h = BULLET_HEIGHT;
+                } else {
+                    w = BULLET_HEIGHT;
+                    h = BULLET_WIDTH;
                 }
-                if (hitWall) {
+                if (check_rect_collision_with_map(2, bullet.x, bullet.y, w, h)) {
                     bullet.active = 0;
                 }
             }
@@ -452,18 +453,27 @@ int main(void) {
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
 
-        // Стены
-        for (int i = 0; i < wallCount; i++) {
-            float model[16] = {0};
-            model[0] = walls[i].width;
-            model[5] = walls[i].height;
-            model[10] = 1.0f;
-            model[15] = 1.0f;
-            model[12] = walls[i].x;
-            model[13] = walls[i].y;
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-            glUniform4fv(colorLoc, 1, gray);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        // Блоки
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                float model[16] = {0};
+                float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                model[0] = BLOCK_SIZE;
+                model[5] = BLOCK_SIZE;
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = cx;
+                model[13] = cy;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                if (is_wall(i, j)) {
+                    glUniform4fv(colorLoc, 1, gray);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                } else if (is_water(i, j)) {
+                    glUniform4fv(colorLoc, 1, blue);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
         }
 
         // Игрок
@@ -497,6 +507,26 @@ int main(void) {
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
             glUniform4fv(colorLoc, 1, red);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
+        
+        // Листва
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (is_foliage(i, j)) {
+                    float model[16] = {0};
+                    float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                    float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                    model[0] = BLOCK_SIZE;
+                    model[5] = BLOCK_SIZE;
+                    model[10] = 1.0f;
+                    model[15] = 1.0f;
+                    model[12] = cx;
+                    model[13] = cy;
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glUniform4fv(colorLoc, 1, dark_green);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
         }
 
         glfwSwapBuffers(window);
