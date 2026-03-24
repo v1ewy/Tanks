@@ -9,19 +9,19 @@
 #define WINDOW_WIDTH_INIT 1920
 #define WINDOW_HEIGHT_INIT 1080
 
-const int FIELD_SIZE = 832;          // 13 * 64
-const int BORDER_WIDTH = 16;
-const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 864
+#define FIELD_SIZE 832          // 13 * 64
+#define BORDER_WIDTH 4
+#define OUTER_SIZE (FIELD_SIZE + 2 * BORDER_WIDTH) // 840
 
-const int PLAYER_SIZE = 58;
-const float PLAYER_SPEED = 175.0f;
+#define PLAYER_SIZE 56
+#define PLAYER_SPEED 200.0f
 
-const float BULLET_SPEED = 600.0f;
-const float BULLET_WIDTH = 20.0f;
-const float BULLET_HEIGHT = 10.0f;
-const float SHOOT_DELAY = 0.4f;
+#define BULLET_SPEED 800.0f
+#define BULLET_WIDTH 20.0f
+#define BULLET_HEIGHT 10.0f
+#define SHOOT_DELAY 0.4f
 
-const int BLOCK_SIZE = 64;
+#define BLOCK_SIZE 64
 
 // ------------------ Параметры карты ------------------
 #define GRID_SIZE 13               // 13x13 клеток
