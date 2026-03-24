@@ -340,9 +340,9 @@ int main(void) {
     float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
     float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
-    float blue[4] = {0.0f, 0.0f, 1.0f, 1.0f};
-    float dark_green[4] = {0.0f, 0.5f, 0.0f, 0.8f};
-    float orange[4] = {1.0f, 0.5f, 0.0f, 1.0f};
+    float blue[4] = {0.0f, 0.8f, 1.0f, 1.0f};
+    float dark_green[4] = {0.0f, 0.7f, 0.0f, 0.8f};
+    float orange[4] = {0.8f, 0.5f, 0.0f, 1.0f};
     
     // ------------------ Инициализация игрока ------------------
     int found = 0;
