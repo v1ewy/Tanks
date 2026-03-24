@@ -10,13 +10,13 @@
 #define WINDOW_HEIGHT_INIT 1080
 
 const int FIELD_SIZE = 832;          // 13 * 64
-const int BORDER_WIDTH = 4;
-const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 840
+const int BORDER_WIDTH = 16;
+const int OUTER_SIZE = FIELD_SIZE + 2 * BORDER_WIDTH; // 864
 
-const int PLAYER_SIZE = 56;
-const float PLAYER_SPEED = 200.0f;
+const int PLAYER_SIZE = 58;
+const float PLAYER_SPEED = 175.0f;
 
-const float BULLET_SPEED = 800.0f;
+const float BULLET_SPEED = 600.0f;
 const float BULLET_WIDTH = 20.0f;
 const float BULLET_HEIGHT = 10.0f;
 const float SHOOT_DELAY = 0.4f;
@@ -27,18 +27,17 @@ const int BLOCK_SIZE = 64;
 #define GRID_SIZE 13               // 13x13 клеток
 #define CELL_SIZE 64               // размер клетки в пикселях
 
-// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва
+// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево
 int map[GRID_SIZE][GRID_SIZE] = {
-    // Пример: стены по краям, игрок внизу слева
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,1,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,0,0,0,0,0,0,0},
+    {0,0,1,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -56,6 +55,11 @@ typedef struct {
     int active;
 } Bullet;
 
+typedef struct {
+    int width, height;
+    float x, y;
+} Wood;
+
 // ------------------ Глобальные переменные ------------------
 int windowWidth = WINDOW_WIDTH_INIT;
 int windowHeight = WINDOW_HEIGHT_INIT;
@@ -64,6 +68,7 @@ int outerX = 0, outerY = 0;
 
 Player player;
 Bullet bullet;
+Wood woods[GRID_SIZE][GRID_SIZE];
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -75,9 +80,8 @@ int rect_collision(float x1, float y1, float w1, float h1, float x2, float y2, f
 int is_wall(int x, int y);
 int is_water(int x, int y);
 int is_foliage(int x, int y);
+int is_wood(int x, int y);
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h);
-int is_player_over_cell(int cellX, int cellY);
-void load_map(void);
 
 // ------------------ Шейдеры ------------------
 const char *vertexShaderSource =
@@ -149,6 +153,7 @@ void ortho_projection(float left, float right, float bottom, float top, float *m
     }
 }
 
+// ------------------ Проверка блока по карте ------------------
 int is_wall(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 1;
     return map[y][x] == 2;
@@ -160,6 +165,10 @@ int is_water(int x, int y) {
 
 int is_foliage(int x, int y) {
     return map[y][x] == 4;
+}
+
+int is_wood(int x, int y) {
+    return map[y][x] == 5;
 }
 
 // ------------------ Проверка коллизии ------------------
@@ -174,50 +183,49 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
     for (int j = top; j <= bottom; j++) {
         for (int i = left; i <= right; i++) {
             switch (who) {
-                case 1:
+                case 1: // игрок
                     if (is_wall(i, j) || is_water(i, j)) return 1;
+                    else if (is_wood(i, j)) {
+                        float dx = fabs(cx - woods[j][i].x);
+                        float dy = fabs(cy - woods[j][i].y);
+                        if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
+                            return 1;
+                        }
+                    }
                     break;
-                case 2:
+                case 2: // пуля
                     if (is_wall(i, j)) return 1;
+                    else if (is_wood(i, j)) {
+                        float dx = fabs(cx - woods[j][i].x);
+                        float dy = fabs(cy - woods[j][i].y);
+                        if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
+                            // Уменьшаем блок в зависимости от направления пули
+                            if (bullet.dirX > 0 || bullet.dirX < 0) {
+                                woods[j][i].width -= 16;
+                                woods[j][i].x += bullet.dirX * 8;
+                            } else if (bullet.dirY > 0 || bullet.dirY < 0) {
+                                woods[j][i].height -= 16;
+                                woods[j][i].y += bullet.dirY * 8;
+                            }
+                            if (woods[j][i].width <= 0 || woods[j][i].height <= 0) {
+                                map[j][i] = 0;
+                            }
+                            return 1;
+                        }
+                    }
+                    break;
             }
         }
     }
     return 0;
 }
 
-// ------------------ Загрузка карты (установка игрока по map) ------------------
-void load_map(void) {
-    // Находим клетку с игроком (значение 1)
-    int found = 0;
-    for (int j = 0; j < GRID_SIZE; j++) {
-        for (int i = 0; i < GRID_SIZE; i++) {
-            if (map[j][i] == 1) {
-                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                found = 1;
-                break;
-            }
-        }
-        if (found) break;
-    }
-    if (!found) {
-        // Если игрока нет на карте, ставим в центр
-        player.x = fieldX + FIELD_SIZE / 2.0f;
-        player.y = fieldY + FIELD_SIZE / 2.0f;
-    }
-    
-    // Ограничиваем игрока границами поля (на случай, если координаты вышли за пределы)
-    float half = PLAYER_SIZE / 2.0f;
-    float minX = fieldX + half;
-    float maxX = fieldX + FIELD_SIZE - half;
-    float minY = fieldY + half;
-    float maxY = fieldY + FIELD_SIZE - half;
-    player.x = fmaxf(minX, fminf(maxX, player.x));
-    player.y = fmaxf(minY, fminf(maxY, player.y));
-}
-
 // ------------------ Обновление проекции и поля при изменении размера окна ------------------
 void update_projection_and_field(GLuint projLoc, int width, int height) {
+    // Сохраняем старые координаты поля
+    int oldFieldX = fieldX;
+    int oldFieldY = fieldY;
+    
     windowWidth = width;
     windowHeight = height;
     float projection[16];
@@ -228,9 +236,28 @@ void update_projection_and_field(GLuint projLoc, int width, int height) {
     fieldY = (windowHeight - FIELD_SIZE) / 2;
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
-
-    // Перезагружаем карту
-    load_map();
+    
+    // Пересчитываем позицию игрока
+    float offsetX = player.x - oldFieldX;
+    float offsetY = player.y - oldFieldY;
+    player.x = fieldX + offsetX;
+    player.y = fieldY + offsetY;
+    
+    // Пересчитываем координаты деревьев
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (map[j][i] == 5) {
+                float oldCenterX = oldFieldX + i * CELL_SIZE + CELL_SIZE/2;
+                float oldCenterY = oldFieldY + j * CELL_SIZE + CELL_SIZE/2;
+                float offsetX_tree = woods[j][i].x - oldCenterX;
+                float offsetY_tree = woods[j][i].y - oldCenterY;
+                float newCenterX = fieldX + i * CELL_SIZE + CELL_SIZE/2;
+                float newCenterY = fieldY + j * CELL_SIZE + CELL_SIZE/2;
+                woods[j][i].x = newCenterX + offsetX_tree;
+                woods[j][i].y = newCenterY + offsetY_tree;
+            }
+        }
+    }
 }
 
 // ------------------ Callback изменения размера окна ------------------
@@ -242,7 +269,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 
 // ------------------ Основная функция ------------------
 int main(void) {
-    // Инициализация GLFW
     if (!glfwInit()) {
         fprintf(stderr, "Не удалось инициализировать GLFW\n");
         return -1;
@@ -259,12 +285,16 @@ int main(void) {
         glfwTerminate();
         return -1;
     }
+    
     glfwMakeContextCurrent(window);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         fprintf(stderr, "Не удалось загрузить glad\n");
         return -1;
     }
+    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     GLuint shaderProgram = create_program(vertexShaderSource, fragmentShaderSource);
     glUseProgram(shaderProgram);
@@ -311,12 +341,44 @@ int main(void) {
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
     float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
     float blue[4] = {0.0f, 0.0f, 1.0f, 1.0f};
-    float dark_green[4] = {0.0f, 0.5f, 0.0f, 1.0f};
+    float dark_green[4] = {0.0f, 0.5f, 0.0f, 0.8f};
+    float orange[4] = {1.0f, 0.5f, 0.0f, 1.0f};
+    
+    // ------------------ Инициализация игрока ------------------
+    int found = 0;
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (map[j][i] == 1) {
+                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                found = 1;
+                break;
+            }
+        }
+        if (found) break;
+    }
+    if (!found) {
+        // Если игрока нет на карте, ставим в центр
+        player.x = fieldX + FIELD_SIZE / 2.0f;
+        player.y = fieldY + FIELD_SIZE / 2.0f;
+    }
 
     // ------------------ Инициализация пули ------------------
     bullet.active = 0;
     float lastDirX = 0.0f, lastDirY = -1.0f;
     double lastShootTime = 0.0;
+    
+    // ------------------ Инициализация дерева ------------------
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (is_wood(i, j)) {
+                woods[j][i].width = 64;
+                woods[j][i].height = 64;
+                woods[j][i].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;;
+                woods[j][i].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+            }
+        }
+    }
 
     // ------------------ Переменные для delta time ------------------
     double lastTime = glfwGetTime();
@@ -471,6 +533,24 @@ int main(void) {
                     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 } else if (is_water(i, j)) {
                     glUniform4fv(colorLoc, 1, blue);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
+        }
+        
+        // Дерево
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (is_wood(i, j)) {
+                    float model[16] = {0};
+                    model[0] = woods[j][i].width;
+                    model[5] = woods[j][i].height;
+                    model[10] = 1.0f;
+                    model[15] = 1.0f;
+                    model[12] = woods[j][i].x;
+                    model[13] = woods[j][i].y;
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glUniform4fv(colorLoc, 1, orange);
                     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 }
             }
