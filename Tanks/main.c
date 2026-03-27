@@ -27,7 +27,7 @@
 #define GRID_SIZE 13               // 13x13 клеток
 #define CELL_SIZE 64               // размер клетки в пикселях
 
-// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево
+// Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево, 6 - враг
 int map[GRID_SIZE][GRID_SIZE] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,1,2,3,4,5,0,0,0,0,0,0},
@@ -47,18 +47,24 @@ int map[GRID_SIZE][GRID_SIZE] = {
 // ------------------ Структуры ------------------
 typedef struct {
     float x, y;
-} Player;
-
-typedef struct {
-    float x, y;
     float dirX, dirY;
     int active;
 } Bullet;
 
 typedef struct {
+    float x, y;
+    Bullet p_bullet;
+} Player;
+
+typedef struct {
     int width, height;
     float x, y;
 } Wood;
+
+typedef struct {
+    float x, y;
+    Bullet b_bullet;
+} Bot;
 
 // ------------------ Глобальные переменные ------------------
 int windowWidth = WINDOW_WIDTH_INIT;
@@ -67,8 +73,8 @@ int fieldX = 0, fieldY = 0;
 int outerX = 0, outerY = 0;
 
 Player player;
-Bullet bullet;
 Wood woods[GRID_SIZE][GRID_SIZE];
+Bot bots[16];
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -200,12 +206,12 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
                             // Уменьшаем блок в зависимости от направления пули
-                            if (bullet.dirX > 0 || bullet.dirX < 0) {
+                            if (player.p_bullet.dirX > 0 || player.p_bullet.dirX < 0) {
                                 woods[j][i].width -= 16;
-                                woods[j][i].x += bullet.dirX * 8;
-                            } else if (bullet.dirY > 0 || bullet.dirY < 0) {
+                                woods[j][i].x += player.p_bullet.dirX * 8;
+                            } else if (player.p_bullet.dirY > 0 || player.p_bullet.dirY < 0) {
                                 woods[j][i].height -= 16;
-                                woods[j][i].y += bullet.dirY * 8;
+                                woods[j][i].y += player.p_bullet.dirY * 8;
                             }
                             if (woods[j][i].width <= 0 || woods[j][i].height <= 0) {
                                 map[j][i] = 0;
@@ -364,7 +370,7 @@ int main(void) {
     }
 
     // ------------------ Инициализация пули ------------------
-    bullet.active = 0;
+    player.p_bullet.active = 0;
     float lastDirX = 0.0f, lastDirY = -1.0f;
     double lastShootTime = 0.0;
     
@@ -424,18 +430,18 @@ int main(void) {
         // ---------- Стрельба ----------
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
             if (currentTime - lastShootTime >= SHOOT_DELAY) {
-                if (!bullet.active) {
-                    bullet.active = 1;
+                if (!player.p_bullet.active) {
+                    player.p_bullet.active = 1;
                     if (lastDirX != 0.0f) {
-                        bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
-                        bullet.y = player.y;
-                        bullet.dirX = lastDirX;
-                        bullet.dirY = 0.0f;
+                        player.p_bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
+                        player.p_bullet.y = player.y;
+                        player.p_bullet.dirX = lastDirX;
+                        player.p_bullet.dirY = 0.0f;
                     } else {
-                        bullet.x = player.x;
-                        bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
-                        bullet.dirX = 0.0f;
-                        bullet.dirY = lastDirY;
+                        player.p_bullet.x = player.x;
+                        player.p_bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
+                        player.p_bullet.dirX = 0.0f;
+                        player.p_bullet.dirY = lastDirY;
                     }
                     lastShootTime = currentTime;
                 }
@@ -443,9 +449,9 @@ int main(void) {
         }
 
         // ---------- Обновление пули ----------
-        if (bullet.active) {
-            bullet.x += bullet.dirX * BULLET_SPEED * deltaTime;
-            bullet.y += bullet.dirY * BULLET_SPEED * deltaTime;
+        if (player.p_bullet.active) {
+            player.p_bullet.x += player.p_bullet.dirX * BULLET_SPEED * deltaTime;
+            player.p_bullet.y += player.p_bullet.dirY * BULLET_SPEED * deltaTime;
 
             // Проверка выхода за границы поля
             float halfW = BULLET_WIDTH / 2.0f;
@@ -455,23 +461,23 @@ int main(void) {
             float minYb = fieldY + halfH;
             float maxYb = fieldY + FIELD_SIZE - halfH;
 
-            if (bullet.x < minXb || bullet.x > maxXb ||
-                bullet.y < minYb || bullet.y > maxYb) {
-                bullet.active = 0;
+            if (player.p_bullet.x < minXb || player.p_bullet.x > maxXb ||
+                player.p_bullet.y < minYb || player.p_bullet.y > maxYb) {
+                player.p_bullet.active = 0;
             }
 
             // Проверка коллизии со стенами
-            if (bullet.active) {
+            if (player.p_bullet.active) {
                 float w, h;
-                if (bullet.dirX != 0) {
+                if (player.p_bullet.dirX != 0) {
                     w = BULLET_WIDTH;
                     h = BULLET_HEIGHT;
                 } else {
                     w = BULLET_HEIGHT;
                     h = BULLET_WIDTH;
                 }
-                if (check_rect_collision_with_map(2, bullet.x, bullet.y, w, h)) {
-                    bullet.active = 0;
+                if (check_rect_collision_with_map(2, player.p_bullet.x, player.p_bullet.y, w, h)) {
+                    player.p_bullet.active = 0;
                 }
             }
         }
@@ -571,9 +577,9 @@ int main(void) {
         }
 
         // Пуля
-        if (bullet.active) {
+        if (player.p_bullet.active) {
             float model[16] = {0};
-            if (bullet.dirX != 0) {
+            if (player.p_bullet.dirX != 0) {
                 model[0] = BULLET_WIDTH;
                 model[5] = BULLET_HEIGHT;
             } else {
@@ -582,8 +588,8 @@ int main(void) {
             }
             model[10] = 1.0f;
             model[15] = 1.0f;
-            model[12] = bullet.x;
-            model[13] = bullet.y;
+            model[12] = player.p_bullet.x;
+            model[13] = player.p_bullet.y;
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
             glUniform4fv(colorLoc, 1, red);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
