@@ -15,6 +15,7 @@
 
 #define PLAYER_SIZE 58
 #define PLAYER_SPEED 175.0f
+#define BOT_SHOOT_DELAY 2.0f
 
 #define BULLET_SPEED 600.0f
 #define BULLET_WIDTH 20.0f
@@ -30,14 +31,14 @@
 // Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево, 6 - враг
 int map[GRID_SIZE][GRID_SIZE] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,1,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,1,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -49,6 +50,7 @@ typedef struct {
     float x, y;
     float dirX, dirY;
     int active;
+    double lastShootTime;
 } Bullet;
 
 typedef struct {
@@ -74,7 +76,7 @@ int outerX = 0, outerY = 0;
 
 Player player;
 Wood woods[GRID_SIZE][GRID_SIZE];
-Bot bots[16];
+Bot bots[GRID_SIZE][GRID_SIZE];
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -87,6 +89,7 @@ int is_wall(int x, int y);
 int is_water(int x, int y);
 int is_foliage(int x, int y);
 int is_wood(int x, int y);
+int is_boot(int x, int y);
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h);
 
 // ------------------ Шейдеры ------------------
@@ -177,6 +180,10 @@ int is_wood(int x, int y) {
     return map[y][x] == 5;
 }
 
+int is_bot(int x, int y) {
+    return map[y][x] == 6;
+}
+
 // ------------------ Проверка коллизии ------------------
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h) {
     float halfW = w / 2.0f;
@@ -195,6 +202,12 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         float dx = fabs(cx - woods[j][i].x);
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
+                            return 1;
+                        }
+                    } else if (is_bot(i, j)) {
+                        float dx = fabs(cx - bots[j][i].x);
+                        float dy = fabs(cy - bots[j][i].y);
+                        if (dx < (w + PLAYER_SIZE) / 2 && dy < (h + PLAYER_SIZE) / 2) {
                             return 1;
                         }
                     }
@@ -218,6 +231,9 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                             }
                             return 1;
                         }
+                    } else if (is_bot(i, j)) {
+                        map[j][i] = 0;
+                        return 1;
                     }
                     break;
             }
@@ -284,7 +300,7 @@ int main(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-
+    
     GLFWwindow *window = glfwCreateWindow(windowWidth, windowHeight, "Танчики", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Не удалось создать окно\n");
@@ -293,7 +309,7 @@ int main(void) {
     }
     
     glfwMakeContextCurrent(window);
-
+    
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         fprintf(stderr, "Не удалось загрузить glad\n");
         return -1;
@@ -301,25 +317,25 @@ int main(void) {
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
+    
     GLuint shaderProgram = create_program(vertexShaderSource, fragmentShaderSource);
     glUseProgram(shaderProgram);
-
+    
     GLint projLoc = glGetUniformLocation(shaderProgram, "uProjection");
     GLint modelLoc = glGetUniformLocation(shaderProgram, "uModel");
     GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
-
+    
     glfwSetWindowUserPointer(window, &projLoc);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
+    
     // Начальная настройка проекции и координат поля (вызовет load_map)
     update_projection_and_field(projLoc, windowWidth, windowHeight);
-
+    
     // ------------------ Создание VAO для квадрата ------------------
     float vertices[] = {
         -0.5f, -0.5f,
-         0.5f, -0.5f,
-         0.5f,  0.5f,
+        0.5f, -0.5f,
+        0.5f,  0.5f,
         -0.5f,  0.5f
     };
     unsigned int indices[] = {
@@ -330,7 +346,7 @@ int main(void) {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
-
+    
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
@@ -340,15 +356,17 @@ int main(void) {
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
-
+    
     // ------------------ Цвета ------------------
     float black[4] = {0.0f, 0.0f, 0.0f, 1.0f};
     float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
-    float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
-    float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
-    float blue[4] = {0.0f, 0.2f, 1.0f, 1.0f};
-    float dark_green[4] = {0.0f, 0.7f, 0.0f, 0.8f};
+    float white[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     float orange[4] = {0.8f, 0.4f, 0.0f, 1.0f};
+    float red[4] = {1.0f, 0.0f, 0.0f, 1.0f};
+    float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
+    float dark_green[4] = {0.0f, 0.7f, 0.0f, 0.8f};
+    float blue[4] = {0.0f, 0.2f, 1.0f, 1.0f};
+
     
     // ------------------ Инициализация игрока ------------------
     int found = 0;
@@ -368,11 +386,24 @@ int main(void) {
         player.x = fieldX + FIELD_SIZE / 2.0f;
         player.y = fieldY + FIELD_SIZE / 2.0f;
     }
-
-    // ------------------ Инициализация пули ------------------
+    
     player.p_bullet.active = 0;
-    float lastDirX = 0.0f, lastDirY = -1.0f;
-    double lastShootTime = 0.0;
+    player.p_bullet.dirX = 0.0f;
+    player.p_bullet.dirY = -1.0f;
+    player.p_bullet.lastShootTime = 0.0;
+    
+    // ------------------ Инициализация бота ------------------
+    for (int j = 0; j < GRID_SIZE; j++) {
+        for (int i = 0; i < GRID_SIZE; i++) {
+            if (is_bot(i, j)) {
+                bots[j][i].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;;
+                bots[j][i].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                bots[j][i].b_bullet.active = 0;
+                bots[j][i].b_bullet.lastShootTime = 0.0f;
+                
+            }
+        }
+    }
     
     // ------------------ Инициализация дерева ------------------
     for (int j = 0; j < GRID_SIZE; j++) {
@@ -403,8 +434,10 @@ int main(void) {
         else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
 
         if (dx || dy) {
-            lastDirX = dx;
-            lastDirY = dy;
+            if (!player.p_bullet.active) {
+                player.p_bullet.dirX = dx;
+                player.p_bullet.dirY = dy;
+            }
 
             // Движение по X
             float newX = player.x + dx * PLAYER_SPEED * deltaTime;
@@ -429,21 +462,17 @@ int main(void) {
 
         // ---------- Стрельба ----------
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            if (currentTime - lastShootTime >= SHOOT_DELAY) {
+            if (currentTime - player.p_bullet.lastShootTime >= SHOOT_DELAY) {
                 if (!player.p_bullet.active) {
                     player.p_bullet.active = 1;
-                    if (lastDirX != 0.0f) {
-                        player.p_bullet.x = player.x + lastDirX * PLAYER_SIZE / 2.0f;
+                    if (player.p_bullet.dirX) {
+                        player.p_bullet.x = player.x + player.p_bullet.dirX * PLAYER_SIZE / 2.0f;
                         player.p_bullet.y = player.y;
-                        player.p_bullet.dirX = lastDirX;
-                        player.p_bullet.dirY = 0.0f;
                     } else {
                         player.p_bullet.x = player.x;
-                        player.p_bullet.y = player.y + lastDirY * PLAYER_SIZE / 2.0f;
-                        player.p_bullet.dirX = 0.0f;
-                        player.p_bullet.dirY = lastDirY;
+                        player.p_bullet.y = player.y + player.p_bullet.dirY * PLAYER_SIZE / 2.0f;
                     }
-                    lastShootTime = currentTime;
+                    player.p_bullet.lastShootTime = currentTime;
                 }
             }
         }
@@ -478,6 +507,44 @@ int main(void) {
                 }
                 if (check_rect_collision_with_map(2, player.p_bullet.x, player.p_bullet.y, w, h)) {
                     player.p_bullet.active = 0;
+                }
+            }
+        }
+        
+        // ---------- Стрельба ботов и обновление их пуль ----------
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (is_bot(i, j)) {
+                    // Стрельба
+                    if (currentTime - bots[j][i].b_bullet.lastShootTime >= BOT_SHOOT_DELAY) {
+                        if (!bots[j][i].b_bullet.active) {
+                            bots[j][i].b_bullet.active = 1;
+                            bots[j][i].b_bullet.x = bots[j][i].x + PLAYER_SIZE / 2.0f;
+                            bots[j][i].b_bullet.y = bots[j][i].y;
+                            bots[j][i].b_bullet.dirX = 1.0f;
+                            bots[j][i].b_bullet.dirY = 0.0f;
+                            bots[j][i].b_bullet.lastShootTime = currentTime;
+                        }
+                    }
+
+                    // Обновление пули бота
+                    if (bots[j][i].b_bullet.active) {
+                        bots[j][i].b_bullet.x += bots[j][i].b_bullet.dirX * BULLET_SPEED * deltaTime;
+                        bots[j][i].b_bullet.y += bots[j][i].b_bullet.dirY * BULLET_SPEED * deltaTime;
+
+                        // Проверка выхода за границы поля
+                        float halfW = BULLET_WIDTH / 2.0f;
+                        float halfH = BULLET_HEIGHT / 2.0f;
+                        float minXb = fieldX + halfW;
+                        float maxXb = fieldX + FIELD_SIZE - halfW;
+                        float minYb = fieldY + halfH;
+                        float maxYb = fieldY + FIELD_SIZE - halfH;
+
+                        if (bots[j][i].b_bullet.x < minXb || bots[j][i].b_bullet.x > maxXb ||
+                            bots[j][i].b_bullet.y < minYb || bots[j][i].b_bullet.y > maxYb) {
+                            bots[j][i].b_bullet.active = 0;
+                        }
+                    }
                 }
             }
         }
@@ -575,6 +642,26 @@ int main(void) {
             glUniform4fv(colorLoc, 1, green);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         }
+        
+        // Боты
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (is_bot(i, j)) {
+                    float model[16] = {0};
+                    float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                    float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                    model[0] = PLAYER_SIZE;
+                    model[5] = PLAYER_SIZE;
+                    model[10] = 1.0f;
+                    model[15] = 1.0f;
+                    model[12] = cx;
+                    model[13] = cy;
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glUniform4fv(colorLoc, 1, red);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
+        }
 
         // Пуля
         if (player.p_bullet.active) {
@@ -591,8 +678,31 @@ int main(void) {
             model[12] = player.p_bullet.x;
             model[13] = player.p_bullet.y;
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-            glUniform4fv(colorLoc, 1, red);
+            glUniform4fv(colorLoc, 1, white);
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
+        
+        // Пули ботов
+        for (int j = 0; j < GRID_SIZE; j++) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (is_bot(i, j) && bots[j][i].b_bullet.active) {
+                    float model[16] = {0};
+                    if (bots[j][i].b_bullet.dirX != 0) {
+                        model[0] = BULLET_WIDTH;
+                        model[5] = BULLET_HEIGHT;
+                    } else {
+                        model[0] = BULLET_HEIGHT;
+                        model[5] = BULLET_WIDTH;
+                    }
+                    model[10] = 1.0f;
+                    model[15] = 1.0f;
+                    model[12] = bots[j][i].b_bullet.x;
+                    model[13] = bots[j][i].b_bullet.y;
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glUniform4fv(colorLoc, 1, white);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
         }
         
         // Листва
