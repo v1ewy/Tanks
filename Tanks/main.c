@@ -15,13 +15,19 @@
 
 #define PLAYER_SIZE 58
 #define PLAYER_SPEED 175.0f
-#define INVINCIBLE_DURATION 2.0f
+#define PLAYER_SHOOT_DELAY 0.4f
 
 #define BULLET_SPEED 600.0f
 #define BULLET_WIDTH 20.0f
 #define BULLET_HEIGHT 10.0f
-#define SHOOT_DELAY 0.4f
+
+#define MAX_BOTS 4
+#define BOT_SPAWN_INTERVAL 2.0f
+#define BOT_SIZE 58
+#define BOT_SPEED 175.0f
 #define BOT_SHOOT_DELAY 2.0f
+
+#define INVINCIBLE_DURATION 2.0f
 
 #define BLOCK_SIZE 64
 
@@ -31,15 +37,15 @@
 
 // Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево, 6 - враг
 int map[GRID_SIZE][GRID_SIZE] = {
-    {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,1,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
-    {0,0,0,2,3,4,5,6,0,0,0,0,0},
+    {0,0,6,0,0,0,0,0,0,0,6,0,0},
+    {0,0,0,2,3,4,5,0,0,1,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
+    {0,0,0,2,3,4,5,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -48,29 +54,37 @@ int map[GRID_SIZE][GRID_SIZE] = {
 
 // ------------------ Структуры ------------------
 typedef struct {
+    double lastShootTime;
     float x, y;
     float dirX, dirY;
     int active;
-    double lastShootTime;
 } Bullet;
 
 typedef struct {
-    float x, y;
     Bullet p_bullet;
+    float x, y;
     int dead;
     int lives;
     float invincibleTimer;
 } Player;
 
 typedef struct {
-    int width, height;
+    Bullet b_bullet;
+    double deathTime;
     float x, y;
-} Wood;
+    float dirX, dirY;
+    int active;
+    float invincibleTimer;
+} Bot;
 
 typedef struct {
     float x, y;
-    Bullet b_bullet;
-} Bot;
+} Spawner;
+
+typedef struct {
+    int width, height;
+    float x, y;
+} Wood;
 
 // ------------------ Глобальные переменные ------------------
 int windowWidth = WINDOW_WIDTH_INIT;
@@ -79,8 +93,13 @@ int fieldX = 0, fieldY = 0;
 int outerX = 0, outerY = 0;
 
 Player player;
+Spawner sp_player;
+
+Bot bots[MAX_BOTS];
+Spawner sp_bots[GRID_SIZE * GRID_SIZE];
+
 Wood woods[GRID_SIZE][GRID_SIZE];
-Bot bots[GRID_SIZE][GRID_SIZE];
+
 
 // ------------------ Прототипы функций ------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -93,7 +112,6 @@ int is_wall(int x, int y);
 int is_water(int x, int y);
 int is_foliage(int x, int y);
 int is_wood(int x, int y);
-int is_boot(int x, int y);
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h);
 
 // ------------------ Шейдеры ------------------
@@ -184,10 +202,6 @@ int is_wood(int x, int y) {
     return map[y][x] == 5;
 }
 
-int is_bot(int x, int y) {
-    return map[y][x] == 6;
-}
-
 // ------------------ Проверка коллизии ------------------
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h) {
     float halfW = w / 2.0f;
@@ -200,18 +214,12 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
     for (int j = top; j <= bottom; j++) {
         for (int i = left; i <= right; i++) {
             switch (who) {
-                case 1: // игрок
+                case 1: // игрок и бот
                     if (is_wall(i, j) || is_water(i, j)) return 1;
                     else if (is_wood(i, j)) {
                         float dx = fabs(cx - woods[j][i].x);
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
-                            return 1;
-                        }
-                    } else if (is_bot(i, j)) {
-                        float dx = fabs(cx - bots[j][i].x);
-                        float dy = fabs(cy - bots[j][i].y);
-                        if (dx < (w + PLAYER_SIZE) / 2 && dy < (h + PLAYER_SIZE) / 2) {
                             return 1;
                         }
                     }
@@ -222,7 +230,6 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         float dx = fabs(cx - woods[j][i].x);
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
-                            // Уменьшаем блок в зависимости от направления пули
                             if (player.p_bullet.dirX > 0 || player.p_bullet.dirX < 0) {
                                 woods[j][i].width -= 16;
                                 woods[j][i].x += player.p_bullet.dirX * 8;
@@ -235,9 +242,6 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                             }
                             return 1;
                         }
-                    } else if (is_bot(i, j)) {
-                        map[j][i] = 0;
-                        return 1;
                     }
                     break;
                 case 3: // пуля бота
@@ -246,7 +250,6 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         float dx = fabs(cx - woods[j][i].x);
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
-                            // Уменьшаем блок в зависимости от направления пули
                             if (player.p_bullet.dirX > 0 || player.p_bullet.dirX < 0) {
                                 woods[j][i].width -= 16;
                                 woods[j][i].x += player.p_bullet.dirX * 8;
@@ -263,7 +266,7 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         float dx = fabs(cx - player.x);
                         float dy = fabs(cy - player.y);
                         if (dx < (w + PLAYER_SIZE) / 2 && dy < (h + PLAYER_SIZE) / 2) {
-                            if (player.invincibleTimer <= 0.0f) { // если не неуязвим
+                            if (player.invincibleTimer <= 0.0f) {
                                 player.lives--;
                                 if (player.lives <= 0) {
                                     player.dead = 1;
@@ -421,7 +424,6 @@ int main(void) {
     float green[4] = {0.0f, 1.0f, 0.0f, 1.0f};
     float dark_green[4] = {0.0f, 0.7f, 0.0f, 0.8f};
     float blue[4] = {0.0f, 0.2f, 1.0f, 1.0f};
-
     
     // ------------------ Инициализация игрока ------------------
     int found = 0;
@@ -451,15 +453,14 @@ int main(void) {
     player.p_bullet.dirY = -1.0f;
     player.p_bullet.lastShootTime = 0.0;
     
-    // ------------------ Инициализация бота ------------------
+    // ------------------ Инициализация спавнеров ------------------
+    int spawn_count = 0;
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
-            if (is_bot(i, j)) {
-                bots[j][i].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;;
-                bots[j][i].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                bots[j][i].b_bullet.active = 0;
-                bots[j][i].b_bullet.lastShootTime = 0.0f;
-                
+            if (map[j][i] == 6) {
+                sp_bots[spawn_count].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                sp_bots[spawn_count].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                spawn_count++;
             }
         }
     }
@@ -531,7 +532,7 @@ int main(void) {
 
         // ---------- Стрельба игрока и обновление пули ----------
         if (!player.dead && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            if (currentTime - player.p_bullet.lastShootTime >= SHOOT_DELAY) {
+            if (currentTime - player.p_bullet.lastShootTime >= PLAYER_SHOOT_DELAY) {
                 if (!player.p_bullet.active) {
                     player.p_bullet.active = 1;
                     if (player.p_bullet.dirX) {
@@ -579,56 +580,177 @@ int main(void) {
             }
         }
         
-        // ---------- Стрельба ботов и обновление пуль ----------
-        for (int j = 0; j < GRID_SIZE; j++) {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                if (is_bot(i, j)) {
-                    // Стрельба
-                    if (currentTime - bots[j][i].b_bullet.lastShootTime >= BOT_SHOOT_DELAY) {
-                        if (!bots[j][i].b_bullet.active) {
-                            bots[j][i].b_bullet.active = 1;
-                            bots[j][i].b_bullet.x = bots[j][i].x + PLAYER_SIZE / 2.0f;
-                            bots[j][i].b_bullet.y = bots[j][i].y;
-                            bots[j][i].b_bullet.dirX = 1.0f;
-                            bots[j][i].b_bullet.dirY = 0.0f;
-                            bots[j][i].b_bullet.lastShootTime = currentTime;
-                        }
+        // ---------- Обработка движения ботов ----------
+        int cur_spawn_idx = 0;
+        double nextSpawnTime = currentTime;
+        int activeCount = 0;
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (bots[i].active) activeCount++;
+        }
+        if (activeCount < MAX_BOTS && spawn_count > 0 && currentTime >= nextSpawnTime) {
+            for (int i = 0; i < MAX_BOTS; i++) {
+                if (!bots[i].active && (bots[i].deathTime == 0 || currentTime - bots[i].deathTime >= BOT_SPAWN_INTERVAL)) {
+                    int idx = cur_spawn_idx;
+                    bots[i].x = sp_bots[idx].x;
+                    bots[i].y = sp_bots[idx].y;
+                    int dir = rand() % 4;
+                    switch (dir) {
+                        case 0: bots[i].dirX = 1.0f; bots[i].dirY = 0.0f; break;
+                        case 1: bots[i].dirX = -1.0f; bots[i].dirY = 0.0f; break;
+                        case 2: bots[i].dirX = 0.0f; bots[i].dirY = -1.0f; break;
+                        case 3: bots[i].dirX = 0.0f; bots[i].dirY = 1.0f; break;
                     }
-                    
-                    // Обновление пули бота
-                    if (bots[j][i].b_bullet.active) {
-                        bots[j][i].b_bullet.x += bots[j][i].b_bullet.dirX * BULLET_SPEED * deltaTime;
-                        bots[j][i].b_bullet.y += bots[j][i].b_bullet.dirY * BULLET_SPEED * deltaTime;
-                        
-                        // Проверка выхода за границы поля
-                        float halfW = BULLET_WIDTH / 2.0f;
-                        float halfH = BULLET_HEIGHT / 2.0f;
-                        float minXb = fieldX + halfW;
-                        float maxXb = fieldX + FIELD_SIZE - halfW;
-                        float minYb = fieldY + halfH;
-                        float maxYb = fieldY + FIELD_SIZE - halfH;
-                        
-                        if (bots[j][i].b_bullet.x < minXb || bots[j][i].b_bullet.x > maxXb ||
-                            bots[j][i].b_bullet.y < minYb || bots[j][i].b_bullet.y > maxYb) {
-                            bots[j][i].b_bullet.active = 0;
+                    bots[i].active = 1;
+                    bots[i].b_bullet.active = 0;
+                    bots[i].b_bullet.dirX = bots[i].dirX;
+                    bots[i].b_bullet.dirY = bots[i].dirY;
+                    bots[i].b_bullet.lastShootTime = currentTime;
+                    bots[i].deathTime = 0.0;
+                    cur_spawn_idx = (cur_spawn_idx + 1) % spawn_count;
+                    nextSpawnTime = currentTime + BOT_SPAWN_INTERVAL;
+                    break;
+                }
+            }
+        }
+        
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (!bots[i].active) continue;
+
+            float newX = bots[i].x + bots[i].dirX * BOT_SPEED * deltaTime;
+            float newY = bots[i].y + bots[i].dirY * BOT_SPEED * deltaTime;
+
+            int collide = 0;
+            // Проверка коллизии с картой
+            if (check_rect_collision_with_map(1, newX, newY, BOT_SIZE, BOT_SIZE)) collide = 1;
+
+            if (!collide) {
+                bots[i].x = newX;
+                bots[i].y = newY;
+                
+            } else {
+                // Пытаемся найти свободное направление
+                int found = 0;
+                for (int attempt = 0; attempt < 4; attempt++) {
+                    int dir = rand() % 4;
+                    float testX = bots[i].x, testY = bots[i].y;
+                    switch (dir) {
+                        case 0: testX += BOT_SPEED * deltaTime; break;
+                        case 1: testX -= BOT_SPEED * deltaTime; break;
+                        case 2: testY -= BOT_SPEED * deltaTime; break;
+                        case 3: testY += BOT_SPEED * deltaTime; break;
+                    }
+
+                    int collideTest = 0;
+                    if (check_rect_collision_with_map(1, testX, testY, BOT_SIZE, BOT_SIZE)) collideTest = 1;
+
+                    if (!collideTest) {
+                        // Устанавливаем новое направление
+                        switch (dir) {
+                            case 0: bots[i].dirX = 1.0f; bots[i].dirY = 0.0f; break;
+                            case 1: bots[i].dirX = -1.0f; bots[i].dirY = 0.0f; break;
+                            case 2: bots[i].dirX = 0.0f; bots[i].dirY = -1.0f; break;
+                            case 3: bots[i].dirX = 0.0f; bots[i].dirY = 1.0f; break;
                         }
-                        
-                        float w, h;
-                        if (bots[j][i].b_bullet.dirX != 0) {
-                            w = BULLET_WIDTH;
-                            h = BULLET_HEIGHT;
-                        } else {
-                            w = BULLET_HEIGHT;
-                            h = BULLET_WIDTH;
-                        }
-                        if (check_rect_collision_with_map(3, bots[j][i].b_bullet.x, bots[j][i].b_bullet.y, w, h)) {
-                            bots[j][i].b_bullet.active = 0;
-                            
-                        }
+                        bots[i].b_bullet.dirX = bots[i].dirX;
+                        bots[i].b_bullet.dirY = bots[i].dirY;
+                        bots[i].x = testX;
+                        bots[i].y = testY;
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // Если не нашли, просто меняем направление случайно (без движения)
+                    int dir = rand() % 4;
+                    switch (dir) {
+                        case 0: bots[i].dirX = 1.0f; bots[i].dirY = 0.0f; break;
+                        case 1: bots[i].dirX = -1.0f; bots[i].dirY = 0.0f; break;
+                        case 2: bots[i].dirX = 0.0f; bots[i].dirY = -1.0f; break;
+                        case 3: bots[i].dirX = 0.0f; bots[i].dirY = 1.0f; break;
+                    }
+                    bots[i].b_bullet.dirX = bots[i].dirX;
+                    bots[i].b_bullet.dirY = bots[i].dirY;
+                }
+            }
+
+            // Ограничение координат границами поля
+            float oldX = bots[i].x;
+            float oldY = bots[i].y;
+            float half = PLAYER_SIZE / 2.0f;
+            float minX = fieldX + half;
+            float maxX = fieldX + FIELD_SIZE - half;
+            float minY = fieldY + half;
+            float maxY = fieldY + FIELD_SIZE - half;
+            bots[i].x = fmaxf(minX, fminf(maxX, bots[i].x));
+            bots[i].y = fmaxf(minY, fminf(maxY, bots[i].y));
+            if (oldX != bots[i].x || oldY != bots[i].y) {
+                int dir = rand() % 4;
+                switch (dir) {
+                    case 0: bots[i].dirX = 1.0f; bots[i].dirY = 0.0f; break;
+                    case 1: bots[i].dirX = -1.0f; bots[i].dirY = 0.0f; break;
+                    case 2: bots[i].dirX = 0.0f; bots[i].dirY = -1.0f; break;
+                    case 3: bots[i].dirX = 0.0f; bots[i].dirY = 1.0f; break;
+                }
+                bots[i].b_bullet.dirX = bots[i].dirX;
+                bots[i].b_bullet.dirY = bots[i].dirY;
+            }
+            
+
+            if (bots[i].invincibleTimer > 0.0f) {
+                bots[i].invincibleTimer -= deltaTime;
+                if (bots[i].invincibleTimer < 0.0f) bots[i].invincibleTimer = 0.0f;
+            }
+        }
+        
+        // ---------- Стрельба ботов и обновление пуль ----------
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (bots[i].active) {
+                if (currentTime - bots[i].b_bullet.lastShootTime >= BOT_SHOOT_DELAY) {
+                    if (!bots[i].b_bullet.active) {
+                        bots[i].b_bullet.active = 1;
+                        bots[i].b_bullet.x = bots[i].x + BOT_SIZE / 2.0f;
+                        bots[i].b_bullet.y = bots[i].y;
+                        bots[i].b_bullet.lastShootTime = currentTime;
                     }
                 }
             }
         }
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (bots[i].b_bullet.active) {
+                bots[i].b_bullet.x += bots[i].b_bullet.dirX * BULLET_SPEED * deltaTime;
+                bots[i].b_bullet.y += bots[i].b_bullet.dirY * BULLET_SPEED * deltaTime;
+                
+                // Проверка выхода за границы поля
+                float halfW = BULLET_WIDTH / 2.0f;
+                float halfH = BULLET_HEIGHT / 2.0f;
+                float minXb = fieldX + halfW;
+                float maxXb = fieldX + FIELD_SIZE - halfW;
+                float minYb = fieldY + halfH;
+                float maxYb = fieldY + FIELD_SIZE - halfH;
+                
+                if (bots[i].b_bullet.x < minXb || bots[i].b_bullet.x > maxXb ||
+                    bots[i].b_bullet.y < minYb || bots[i].b_bullet.y > maxYb) {
+                    bots[i].b_bullet.active = 0;
+                }
+                
+                // Проверка коллизии со стенами
+                if (bots[i].b_bullet.active) {
+                    float w, h;
+                    if (bots[i].b_bullet.dirX != 0) {
+                        w = BULLET_WIDTH;
+                        h = BULLET_HEIGHT;
+                    } else {
+                        w = BULLET_HEIGHT;
+                        h = BULLET_WIDTH;
+                    }
+                    if (check_rect_collision_with_map(2, bots[i].b_bullet.x, bots[i].b_bullet.y, w, h)) {
+                        bots[i].b_bullet.active = 0;
+                    }
+                }
+            }
+        }
+        
+        
 
         // ---------- Отрисовка ----------
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -731,22 +853,18 @@ int main(void) {
         }
         
         // Боты
-        for (int j = 0; j < GRID_SIZE; j++) {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                if (is_bot(i, j)) {
-                    float model[16] = {0};
-                    float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                    float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                    model[0] = PLAYER_SIZE;
-                    model[5] = PLAYER_SIZE;
-                    model[10] = 1.0f;
-                    model[15] = 1.0f;
-                    model[12] = cx;
-                    model[13] = cy;
-                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                    glUniform4fv(colorLoc, 1, red);
-                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-                }
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (bots[i].active) {
+                float model[16] = {0};
+                model[0] = PLAYER_SIZE;
+                model[5] = PLAYER_SIZE;
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = bots[i].x;
+                model[13] = bots[i].y;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                glUniform4fv(colorLoc, 1, red);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             }
         }
 
@@ -770,25 +888,23 @@ int main(void) {
         }
         
         // Пули ботов
-        for (int j = 0; j < GRID_SIZE; j++) {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                if (is_bot(i, j) && bots[j][i].b_bullet.active) {
-                    float model[16] = {0};
-                    if (bots[j][i].b_bullet.dirX != 0) {
-                        model[0] = BULLET_WIDTH;
-                        model[5] = BULLET_HEIGHT;
-                    } else {
-                        model[0] = BULLET_HEIGHT;
-                        model[5] = BULLET_WIDTH;
-                    }
-                    model[10] = 1.0f;
-                    model[15] = 1.0f;
-                    model[12] = bots[j][i].b_bullet.x;
-                    model[13] = bots[j][i].b_bullet.y;
-                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                    glUniform4fv(colorLoc, 1, white);
-                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        for (int i = 0; i < MAX_BOTS; i++) {
+            if (bots[i].b_bullet.active) {
+                float model[16] = {0};
+                if (bots[i].b_bullet.dirX != 0) {
+                    model[0] = BULLET_WIDTH;
+                    model[5] = BULLET_HEIGHT;
+                } else {
+                    model[0] = BULLET_HEIGHT;
+                    model[5] = BULLET_WIDTH;
                 }
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = bots[i].b_bullet.x;
+                model[13] = bots[i].b_bullet.y;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                glUniform4fv(colorLoc, 1, white);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             }
         }
         
