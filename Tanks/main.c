@@ -15,12 +15,13 @@
 
 #define PLAYER_SIZE 58
 #define PLAYER_SPEED 175.0f
-#define BOT_SHOOT_DELAY 2.0f
+#define INVINCIBLE_DURATION 2.0f
 
 #define BULLET_SPEED 600.0f
 #define BULLET_WIDTH 20.0f
 #define BULLET_HEIGHT 10.0f
 #define SHOOT_DELAY 0.4f
+#define BOT_SHOOT_DELAY 2.0f
 
 #define BLOCK_SIZE 64
 
@@ -31,7 +32,7 @@
 // Карта: 0 - пусто, 1 - игрок, 2 - каменная стена, 3 - вода, 4 - листва, 5 - дерево, 6 - враг
 int map[GRID_SIZE][GRID_SIZE] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
-    {0,0,1,2,3,4,5,6,0,0,0,0,0},
+    {0,0,0,2,3,4,5,6,0,1,0,0,0},
     {0,0,0,2,3,4,5,6,0,0,0,0,0},
     {0,0,0,2,3,4,5,6,0,0,0,0,0},
     {0,0,0,2,3,4,5,6,0,0,0,0,0},
@@ -56,6 +57,9 @@ typedef struct {
 typedef struct {
     float x, y;
     Bullet p_bullet;
+    int dead;
+    int lives;
+    float invincibleTimer;
 } Player;
 
 typedef struct {
@@ -212,9 +216,9 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                         }
                     }
                     break;
-                case 2: // пуля
+                case 2: // пуля игрока
                     if (is_wall(i, j)) return 1;
-                    else if (is_wood(i, j)) {
+                    if (is_wood(i, j)) {
                         float dx = fabs(cx - woods[j][i].x);
                         float dy = fabs(cy - woods[j][i].y);
                         if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
@@ -234,6 +238,57 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h)
                     } else if (is_bot(i, j)) {
                         map[j][i] = 0;
                         return 1;
+                    }
+                    break;
+                case 3: // пуля бота
+                    if (is_wall(i, j)) return 1;
+                    if (is_wood(i, j)) {
+                        float dx = fabs(cx - woods[j][i].x);
+                        float dy = fabs(cy - woods[j][i].y);
+                        if (dx < (w + woods[j][i].width) / 2 && dy < (h + woods[j][i].height) / 2) {
+                            // Уменьшаем блок в зависимости от направления пули
+                            if (player.p_bullet.dirX > 0 || player.p_bullet.dirX < 0) {
+                                woods[j][i].width -= 16;
+                                woods[j][i].x += player.p_bullet.dirX * 8;
+                            } else if (player.p_bullet.dirY > 0 || player.p_bullet.dirY < 0) {
+                                woods[j][i].height -= 16;
+                                woods[j][i].y += player.p_bullet.dirY * 8;
+                            }
+                            if (woods[j][i].width <= 0 || woods[j][i].height <= 0) {
+                                map[j][i] = 0;
+                            }
+                            return 1;
+                        }
+                    } else {
+                        float dx = fabs(cx - player.x);
+                        float dy = fabs(cy - player.y);
+                        if (dx < (w + PLAYER_SIZE) / 2 && dy < (h + PLAYER_SIZE) / 2) {
+                            if (player.invincibleTimer <= 0.0f) { // если не неуязвим
+                                player.lives--;
+                                if (player.lives <= 0) {
+                                    player.dead = 1;
+                                } else {
+                                    int found = 0;
+                                    for (int y = 0; y < GRID_SIZE; y++) {
+                                        for (int x = 0; x < GRID_SIZE; x++) {
+                                            if (map[y][x] == 1) {
+                                                player.x = fieldX + x * CELL_SIZE + CELL_SIZE / 2.0f;
+                                                player.y = fieldY + y * CELL_SIZE + CELL_SIZE / 2.0f;
+                                                found = 1;
+                                                break;
+                                            }
+                                        }
+                                        if (found) break;
+                                    }
+                                    if (!found) {
+                                        player.x = fieldX + FIELD_SIZE / 2.0f;
+                                        player.y = fieldY + FIELD_SIZE / 2.0f;
+                                    }
+                                    player.invincibleTimer = INVINCIBLE_DURATION;
+                                    player.p_bullet.active = 0;
+                                }
+                            }
+                        }
                     }
                     break;
             }
@@ -387,6 +442,10 @@ int main(void) {
         player.y = fieldY + FIELD_SIZE / 2.0f;
     }
     
+    player.dead = 0;
+    player.lives = 3;
+    player.invincibleTimer = 0.0f;
+    
     player.p_bullet.active = 0;
     player.p_bullet.dirX = 0.0f;
     player.p_bullet.dirY = -1.0f;
@@ -427,28 +486,33 @@ int main(void) {
         lastTime = currentTime;
 
         // ---------- Обработка движения игрока ----------
-        float dx = 0.0f, dy = 0.0f;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
-        else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
-        else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
-        else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
-
-        if (dx || dy) {
-            if (!player.p_bullet.active) {
-                player.p_bullet.dirX = dx;
-                player.p_bullet.dirY = dy;
+        if (!player.dead) {
+            float dx = 0.0f, dy = 0.0f;
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
+            else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
+            else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
+            else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
+            
+            if (dx || dy) {
+                if (!player.p_bullet.active) {
+                    player.p_bullet.dirX = dx;
+                    player.p_bullet.dirY = dy;
+                }
+                
+                // Движение по X
+                float newX = player.x + dx * PLAYER_SPEED * deltaTime;
+                if (!check_rect_collision_with_map(1, newX, player.y, PLAYER_SIZE, PLAYER_SIZE)) {
+                    player.x = newX;
+                }
+                // Движение по Y
+                float newY = player.y + dy * PLAYER_SPEED * deltaTime;
+                if (!check_rect_collision_with_map(1, player.x, newY, PLAYER_SIZE, PLAYER_SIZE)) {
+                    player.y = newY;
+                }
             }
-
-            // Движение по X
-            float newX = player.x + dx * PLAYER_SPEED * deltaTime;
-            if (!check_rect_collision_with_map(1, newX, player.y, PLAYER_SIZE, PLAYER_SIZE)) {
-                player.x = newX;
-            }
-            // Движение по Y
-            float newY = player.y + dy * PLAYER_SPEED * deltaTime;
-            if (!check_rect_collision_with_map(1, player.x, newY, PLAYER_SIZE, PLAYER_SIZE)) {
-                player.y = newY;
-            }
+        } else {
+            player.x = 0;
+            player.y = 0;
         }
 
         // Ограничение игрока границами поля
@@ -459,9 +523,14 @@ int main(void) {
         float maxY = fieldY + FIELD_SIZE - half;
         player.x = fmaxf(minX, fminf(maxX, player.x));
         player.y = fmaxf(minY, fminf(maxY, player.y));
+        
+        if (player.invincibleTimer > 0.0f) {
+            player.invincibleTimer -= deltaTime;
+            if (player.invincibleTimer < 0.0f) player.invincibleTimer = 0.0f;
+        }
 
-        // ---------- Стрельба ----------
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        // ---------- Стрельба игрока и обновление пули ----------
+        if (!player.dead && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
             if (currentTime - player.p_bullet.lastShootTime >= SHOOT_DELAY) {
                 if (!player.p_bullet.active) {
                     player.p_bullet.active = 1;
@@ -476,8 +545,7 @@ int main(void) {
                 }
             }
         }
-
-        // ---------- Обновление пули ----------
+        
         if (player.p_bullet.active) {
             player.p_bullet.x += player.p_bullet.dirX * BULLET_SPEED * deltaTime;
             player.p_bullet.y += player.p_bullet.dirY * BULLET_SPEED * deltaTime;
@@ -511,7 +579,7 @@ int main(void) {
             }
         }
         
-        // ---------- Стрельба ботов и обновление их пуль ----------
+        // ---------- Стрельба ботов и обновление пуль ----------
         for (int j = 0; j < GRID_SIZE; j++) {
             for (int i = 0; i < GRID_SIZE; i++) {
                 if (is_bot(i, j)) {
@@ -526,12 +594,12 @@ int main(void) {
                             bots[j][i].b_bullet.lastShootTime = currentTime;
                         }
                     }
-
+                    
                     // Обновление пули бота
                     if (bots[j][i].b_bullet.active) {
                         bots[j][i].b_bullet.x += bots[j][i].b_bullet.dirX * BULLET_SPEED * deltaTime;
                         bots[j][i].b_bullet.y += bots[j][i].b_bullet.dirY * BULLET_SPEED * deltaTime;
-
+                        
                         // Проверка выхода за границы поля
                         float halfW = BULLET_WIDTH / 2.0f;
                         float halfH = BULLET_HEIGHT / 2.0f;
@@ -539,10 +607,23 @@ int main(void) {
                         float maxXb = fieldX + FIELD_SIZE - halfW;
                         float minYb = fieldY + halfH;
                         float maxYb = fieldY + FIELD_SIZE - halfH;
-
+                        
                         if (bots[j][i].b_bullet.x < minXb || bots[j][i].b_bullet.x > maxXb ||
                             bots[j][i].b_bullet.y < minYb || bots[j][i].b_bullet.y > maxYb) {
                             bots[j][i].b_bullet.active = 0;
+                        }
+                        
+                        float w, h;
+                        if (bots[j][i].b_bullet.dirX != 0) {
+                            w = BULLET_WIDTH;
+                            h = BULLET_HEIGHT;
+                        } else {
+                            w = BULLET_HEIGHT;
+                            h = BULLET_WIDTH;
+                        }
+                        if (check_rect_collision_with_map(3, bots[j][i].b_bullet.x, bots[j][i].b_bullet.y, w, h)) {
+                            bots[j][i].b_bullet.active = 0;
+                            
                         }
                     }
                 }
@@ -630,17 +711,23 @@ int main(void) {
         }
 
         // Игрок
-        {
-            float model[16] = {0};
-            model[0] = PLAYER_SIZE;
-            model[5] = PLAYER_SIZE;
-            model[10] = 1.0f;
-            model[15] = 1.0f;
-            model[12] = player.x;
-            model[13] = player.y;
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-            glUniform4fv(colorLoc, 1, green);
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        if (!player.dead) {
+            int draw = 1;
+            if (player.invincibleTimer > 0.0f) {
+                if (fmod(glfwGetTime(), 0.2f) > 0.1f) draw = 0;
+            }
+            if (draw) {
+                float model[16] = {0};
+                model[0] = PLAYER_SIZE;
+                model[5] = PLAYER_SIZE;
+                model[10] = 1.0f;
+                model[15] = 1.0f;
+                model[12] = player.x;
+                model[13] = player.y;
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                glUniform4fv(colorLoc, 1, green);
+                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+            }
         }
         
         // Боты
@@ -727,6 +814,15 @@ int main(void) {
 
         glfwSwapBuffers(window);
         glfwPollEvents();
+        
+        if (player.dead) {
+            static int once = 0;
+            if (!once) {
+                printf("Игрок погиб! Игра завершена.\n");
+                once = 1;
+                glfwSetWindowShouldClose(window, 1);
+            }
+        }
     }
 
     // Очистка ресурсов
