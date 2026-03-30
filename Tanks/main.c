@@ -295,29 +295,15 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h,
                                 if (player.lives <= 0) {
                                     player.dead = 1;
                                 } else {
-                                    int found = 0;
-                                    for (int y = 0; y < GRID_SIZE; y++) {
-                                        for (int x = 0; x < GRID_SIZE; x++) {
-                                            if (map[y][x] == 1) {
-                                                player.x = fieldX + x * CELL_SIZE + CELL_SIZE / 2.0f;
-                                                player.y = fieldY + y * CELL_SIZE + CELL_SIZE / 2.0f;
-                                                found = 1;
-                                                break;
-                                            }
-                                        }
-                                        if (found) break;
-                                    }
-                                    if (!found) {
-                                        player.x = fieldX + FIELD_SIZE / 2.0f;
-                                        player.y = fieldY + FIELD_SIZE / 2.0f;
-                                    }
+                                    player.x = sp_player.x;
+                                    player.y = sp_player.y;
                                     player.invincibleTimer = INVINCIBLE_DURATION;
                                 }
                             }
                         }
                     }
                     break;
-                case 4:
+                case 4: // бот
                     if (is_wall(i, j) || is_water(i, j)) return 1;
                     else if (is_wood(i, j)) {
                         float dx = fabs(cx - woods[j][i].x);
@@ -476,8 +462,8 @@ int main(void) {
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 1) {
-                player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                sp_player.x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                sp_player.y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
                 found = 1;
                 break;
             }
@@ -486,10 +472,12 @@ int main(void) {
     }
     if (!found) {
         // Если игрока нет на карте, ставим в центр
-        player.x = fieldX + FIELD_SIZE / 2.0f;
-        player.y = fieldY + FIELD_SIZE / 2.0f;
+        sp_player.x = fieldX + FIELD_SIZE / 2.0f;
+        sp_player.y = fieldY + FIELD_SIZE / 2.0f;
     }
     
+    player.x = sp_player.x;
+    player.y = sp_player.y;
     player.dead = 0;
     player.lives = 3;
     player.invincibleTimer = 0.0f;
@@ -562,7 +550,6 @@ int main(void) {
             player.y = 0;
         }
 
-        // Ограничение игрока границами поля
         float half = PLAYER_SIZE / 2.0f;
         float minX = fieldX + half;
         float maxX = fieldX + FIELD_SIZE - half;
@@ -597,7 +584,6 @@ int main(void) {
             player.p_bullet.x += player.p_bullet.dirX * BULLET_SPEED * deltaTime;
             player.p_bullet.y += player.p_bullet.dirY * BULLET_SPEED * deltaTime;
 
-            // Проверка выхода за границы поля
             float halfW = BULLET_WIDTH / 2.0f;
             float halfH = BULLET_HEIGHT / 2.0f;
             float minXb = fieldX + halfW;
@@ -610,7 +596,6 @@ int main(void) {
                 player.p_bullet.active = 0;
             }
 
-            // Проверка коллизии со стенами
             if (player.p_bullet.active) {
                 float w, h;
                 if (player.p_bullet.dirX != 0) {
@@ -627,8 +612,8 @@ int main(void) {
             }
         }
         
-        // ---------- Обработка движения ботов ----------
-        static double nextSpawn = BOT_SPAWN_INTERVAL;
+        // ---------- Спавн ботов ----------
+        static double nextSpawn = 0;
         static int spawnIndex = 0;
 
         int activeCount = 0;
@@ -667,12 +652,12 @@ int main(void) {
             }
         }
         
+        //  ----- Движение ботов в сторону игрока с задержкой -----
         for (int i = 0; i < MAX_BOTS; i++) {
             if (!bots[i].active) continue;
 
             // ----- Поворот по таймеру -----
             if (currentTime >= bots[i].nextRotateTime) {
-                // Вычисляем направление к игроку
                 float dx = player.x - bots[i].x;
                 float dy = player.y - bots[i].y;
                 float desiredDirX = 0.0f, desiredDirY = 0.0f;
@@ -682,7 +667,6 @@ int main(void) {
                     desiredDirY = (dy > 0) ? 1.0f : -1.0f;
                 }
 
-                // Пробуем желаемое направление
                 int found = 0;
                 float bestDirX = 0, bestDirY = 0;
 
@@ -697,12 +681,12 @@ int main(void) {
                 for (int d = 0; d < 4; d++) {
                     float testX = bots[i].x + dirs[d][0] * (BOT_SPEED * deltaTime);
                     float testY = bots[i].y + dirs[d][1] * (BOT_SPEED * deltaTime);
-                    // Проверка границ
+
                     float half = BOT_SIZE / 2.0f;
                     float minX = fieldX + half, maxX = fieldX + FIELD_SIZE - half;
                     float minY = fieldY + half, maxY = fieldY + FIELD_SIZE - half;
                     if (testX < minX || testX > maxX || testY < minY || testY > maxY) continue;
-                    // Проверка коллизии с картой
+
                     if (!check_rect_collision_with_map(4, testX, testY, BOT_SIZE, BOT_SIZE, i, 0)) {
                         bestDirX = dirs[d][0];
                         bestDirY = dirs[d][1];
@@ -716,7 +700,6 @@ int main(void) {
                     bots[i].dirY = bestDirY;
                 }
 
-                // Обновляем таймер
                 bots[i].nextRotateTime = currentTime + BOT_ROTATE_INTERVAL;
             }
 
@@ -724,7 +707,6 @@ int main(void) {
             float newX = bots[i].x + bots[i].dirX * BOT_SPEED * deltaTime;
             float newY = bots[i].y + bots[i].dirY * BOT_SPEED * deltaTime;
 
-            // Проверка границ
             float half = BOT_SIZE / 2.0f;
             float minX = fieldX + half, maxX = fieldX + FIELD_SIZE - half;
             float minY = fieldY + half, maxY = fieldY + FIELD_SIZE - half;
@@ -733,7 +715,6 @@ int main(void) {
             if (newY < minY) newY = minY;
             if (newY > maxY) newY = maxY;
 
-            // Проверка коллизии с картой
             if (!check_rect_collision_with_map(4, newX, newY, BOT_SIZE, BOT_SIZE, i, 0)) {
                 bots[i].x = newX;
                 bots[i].y = newY;
@@ -773,7 +754,6 @@ int main(void) {
                 bots[i].b_bullet.x += bots[i].b_bullet.dirX * BULLET_SPEED * deltaTime;
                 bots[i].b_bullet.y += bots[i].b_bullet.dirY * BULLET_SPEED * deltaTime;
                 
-                // Проверка выхода за границы поля
                 float halfW = BULLET_WIDTH / 2.0f;
                 float halfH = BULLET_HEIGHT / 2.0f;
                 float minXb = fieldX + halfW;
@@ -786,7 +766,6 @@ int main(void) {
                     bots[i].b_bullet.active = 0;
                 }
                 
-                // Проверка коллизии со стенами
                 if (bots[i].b_bullet.active) {
                     float w, h;
                     if (bots[i].b_bullet.dirX != 0) {
