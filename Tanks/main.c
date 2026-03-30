@@ -5,6 +5,10 @@
 #include <math.h>
 #include <time.h>
 
+#include <bullet.h>
+#include <player.h>
+#include <bots.h>
+
 // ------------------ Константы ------------------
 #define WINDOW_WIDTH_INIT 1920
 #define WINDOW_HEIGHT_INIT 1080
@@ -53,35 +57,7 @@ int map[GRID_SIZE][GRID_SIZE] = {
     {0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
-// ------------------ Структуры ------------------
-typedef struct {
-    double lastShootTime;
-    float x, y;
-    float dirX, dirY;
-    int active;
-} Bullet;
-
-typedef struct {
-    Bullet p_bullet;
-    float x, y;
-    int dead;
-    int lives;
-    float invincibleTimer;
-} Player;
-
-typedef struct {
-    Bullet b_bullet;
-    double deathTime;
-    double nextRotateTime;
-    float x, y;
-    float dirX, dirY;
-    int active;
-    float invincibleTimer;
-} Bot;
-
-typedef struct {
-    float x, y;
-} Spawner;
+// ----------------- Структура дерева -----------------
 
 typedef struct {
     int width, height;
