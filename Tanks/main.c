@@ -10,42 +10,43 @@
 #include "stb_truetype.h"
 
 // ------------------ Константы ------------------
+//окно
 #define WINDOW_WIDTH_INIT 1920
 #define WINDOW_HEIGHT_INIT 1080
 
-#define FIELD_SIZE 832          // 13 * 64
-#define BORDER_WIDTH 16
+#define FIELD_SIZE 832          // 13 * 64 размер поля
+#define BORDER_WIDTH 16         // ширина рамки
 #define OUTER_SIZE (FIELD_SIZE + 2 * BORDER_WIDTH) // 864
 
-#define PLAYER_SIZE 58
-#define PLAYER_SPEED 175.0f
-#define PLAYER_SHOOT_DELAY 0.4f
+#define PLAYER_SIZE 58    // танк
+#define PLAYER_SPEED 175.0f  // скорость игрока
+#define PLAYER_SHOOT_DELAY 0.4f  // задержка между выстрелами
 
-#define BULLET_SPEED 600.0f
-#define BULLET_WIDTH 20.0f
-#define BULLET_HEIGHT 10.0f
+#define BULLET_SPEED 600.0f  // скорость пули
+#define BULLET_WIDTH 20.0f   // ширина пули
+#define BULLET_HEIGHT 10.0f  // высота пули
 
-#define MAX_BOTS 4
-#define BOT_SPAWN_INTERVAL 4.0f
+// бот
+#define MAX_BOTS 4 
+#define BOT_SPAWN_INTERVAL 4.0f 
 #define BOT_ROTATE_INTERVAL 1.0f
 #define BOT_SIZE 58
-#define BOT_SPEED 175.0f
-#define BOT_SHOOT_DELAY 2.0f
+#define BOT_SPEED 175.0f  
+#define BOT_SHOOT_DELAY 2.0f  
+#define INVINCIBLE_DURATION 2.0f 
 
-#define INVINCIBLE_DURATION 2.0f
-
+// параметры карты
+#define GRID_SIZE 13
+#define CELL_SIZE 64
 #define BLOCK_SIZE 64
 
 // ------------------ Состояния игры ------------------
 typedef enum {
     GAME_STATE_MENU,
     GAME_STATE_LEVEL_SELECT,
-    GAME_STATE_PLAYING
+    GAME_STATE_PLAYING,
+    GAME_STATE_GAME_OVER
 } GameState;
-
-// ------------------ Параметры карты ------------------
-#define GRID_SIZE 13
-#define CELL_SIZE 64
 
 // Структура для уровней
 typedef struct {
@@ -113,6 +114,21 @@ int selectedMenuItem = 0;
 int selectedLevel = 0;
 int total_levels = 1;
 
+// Для Game Over
+double gameOverTimer = 0.0;
+int gameOverMessageIndex = 0;
+int showDeathMenu = 0;
+
+// Фразы для Game Over
+const char* gameOverMessages[] = {
+    "КАПИТАН УБИТ",
+    "ЭКИПАЖ КОНТУЖЕН",
+    "ТАНК ГОРИТ",
+    "ВЗРЫВ БОЕКОМПЛЕКТА",
+    "КРИТИЧЕСКИЕ ПОВРЕЖДЕНИЯ"
+};
+int gameOverMessagesCount = 5;
+
 // Для текста
 stbtt_bakedchar cdata[96];
 GLuint fontTexture;
@@ -139,6 +155,8 @@ void init_font();
 void render_text(const char* text, float x, float y, float scale, float r, float g, float b);
 void render_menu();
 void render_level_select();
+void render_game_over_screen();
+void render_death_menu();
 
 // ------------------ Шейдеры ------------------
 const char* vertexShaderSource =
@@ -439,7 +457,6 @@ void render_text(const char* text, float x, float y, float scale, float r, float
 
     glBindVertexArray(VAOText);
 
-    float startX = x;
     float currentX = x;
     float currentY = y;
 
@@ -471,22 +488,22 @@ void render_menu() {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
-    render_text("TANKS GAME", centerX - 130, centerY - 200, 1.0f, 1.0f, 1.0f, 1.0f);
+    render_text("TANKS GAME", centerX - 180, centerY - 350, 2.5f, 1.0f, 0.8f, 0.2f);
 
     const char* items[] = { "START GAME", "EXIT" };
     for (int i = 0; i < 2; i++) {
-        float y = centerY - 50 + i * 80;
+        float y = centerY - 50 + i * 100;
         float r = (selectedMenuItem == i) ? 1.0f : 0.5f;
         float g = (selectedMenuItem == i) ? 1.0f : 0.5f;
         float b = (selectedMenuItem == i) ? 1.0f : 0.5f;
 
         if (selectedMenuItem == i) {
-            render_text(">", centerX - 100, y, 1.0f, 1.0f, 1.0f, 1.0f);
+            render_text(">", centerX - 220, y, 1.5f, 1.0f, 1.0f, 1.0f);
         }
-        render_text(items[i], centerX - 70, y, 1.0f, r, g, b);
+        render_text(items[i], centerX - 170, y, 1.5f, r, g, b);
     }
 
-    render_text("W/S - Navigate   SPACE - Select", centerX - 220, centerY + 150, 0.7f, 0.7f, 0.7f, 0.7f);
+    render_text("W/S - Navigate     SPACE - Select", centerX - 280, centerY + 400, 0.8f, 0.7f, 0.7f, 0.7f);
 }
 
 // ------------------ Отрисовка выбора уровня ------------------
@@ -494,11 +511,11 @@ void render_level_select() {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
-    render_text("SELECT LEVEL", centerX - 120, centerY - 200, 1.0f, 1.0f, 1.0f, 1.0f);
+    render_text("SELECT LEVEL", centerX - 160, centerY - 350, 2.0f, 1.0f, 0.8f, 0.2f);
 
     char level_text[50];
     for (int i = 0; i < total_levels; i++) {
-        float y = centerY - 50 + i * 80;
+        float y = centerY - 50 + i * 100;
         float r = (selectedLevel == i) ? 1.0f : 0.5f;
         float g = (selectedLevel == i) ? 1.0f : 0.5f;
         float b = (selectedLevel == i) ? 1.0f : 0.5f;
@@ -506,22 +523,60 @@ void render_level_select() {
         sprintf(level_text, "LEVEL %d", i + 1);
 
         if (selectedLevel == i) {
-            render_text(">", centerX - 100, y, 1.0f, 1.0f, 1.0f, 1.0f);
+            render_text(">", centerX - 150, y, 1.5f, 1.0f, 1.0f, 1.0f);
         }
-        render_text(level_text, centerX - 60, y, 1.0f, r, g, b);
+        render_text(level_text, centerX - 100, y, 1.5f, r, g, b);
     }
 
-    float y = centerY + 100;
+    float y = centerY + 200;
     float r = (selectedLevel == total_levels) ? 1.0f : 0.5f;
     float g = (selectedLevel == total_levels) ? 1.0f : 0.5f;
     float b = (selectedLevel == total_levels) ? 1.0f : 0.5f;
 
     if (selectedLevel == total_levels) {
-        render_text(">", centerX - 100, y, 1.0f, 1.0f, 1.0f, 1.0f);
+        render_text(">", centerX - 150, y, 1.5f, 1.0f, 1.0f, 1.0f);
     }
-    render_text("BACK", centerX - 40, y, 1.0f, r, g, b);
+    render_text("BACK", centerX - 100, y, 1.5f, r, g, b);
 
-    render_text("W/S - Navigate   SPACE - Select", centerX - 220, centerY + 200, 0.7f, 0.7f, 0.7f, 0.7f);
+    render_text("W/S - Navigate     SPACE - Select", centerX - 280, centerY + 400, 0.8f, 0.7f, 0.7f, 0.7f);
+}
+
+// ------------------ Отрисовка Game Over ------------------
+void render_game_over_screen() {
+    float centerX = windowWidth / 2;
+    float centerY = windowHeight / 2;
+
+    render_text("GAME OVER", centerX - 50, centerY - 10, 2.5f, 1.0f, 0.2f, 0.2f);
+    render_text(gameOverMessages[gameOverMessageIndex], centerX - 200, centerY - 30, 1.3f, 1.0f, 0.8f, 0.2f);
+
+    char timerText[50];
+    int remaining = (int)(4.0 - (glfwGetTime() - gameOverTimer));
+    if (remaining < 0) remaining = 0;
+    render_text("PRESS SPACE TO SKIP", centerX - 160, centerY + 180, 0.7f, 0.5f, 0.5f, 0.5f);
+}
+
+// ------------------ Отрисовка меню после смерти ------------------
+void render_death_menu() {
+    float centerX = windowWidth / 2;
+    float centerY = windowHeight / 2;
+
+    render_text("TANK DESTROYED", centerX - 170, centerY - 200, 1.8f, 1.0f, 0.3f, 0.3f);
+    render_text(gameOverMessages[gameOverMessageIndex], centerX - 200, centerY - 100, 1.2f, 1.0f, 0.8f, 0.2f);
+
+    const char* items[] = { "PLAY AGAIN", "MAIN MENU" };
+    for (int i = 0; i < 2; i++) {
+        float y = centerY + 20 + i * 80;
+        float r = (selectedMenuItem == i) ? 1.0f : 0.5f;
+        float g = (selectedMenuItem == i) ? 1.0f : 0.5f;
+        float b = (selectedMenuItem == i) ? 1.0f : 0.5f;
+
+        if (selectedMenuItem == i) {
+            render_text(">", centerX - 150, y, 1.2f, 1.0f, 1.0f, 1.0f);
+        }
+        render_text(items[i], centerX - 110, y, 1.2f, r, g, b);
+    }
+
+    render_text("W/S - Navigate     SPACE - Select", centerX - 280, centerY + 220, 0.7f, 0.5f, 0.5f, 0.5f);
 }
 
 // ------------------ Загрузка уровня ------------------
@@ -529,18 +584,18 @@ void load_level(int level_index) {
     // Инициализация уровня 1
     int level1_map[GRID_SIZE][GRID_SIZE] = {
         {0,0,6,0,0,0,0,0,0,0,6,0,0},
-        {0,0,0,2,3,4,5,0,0,1,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
-        {0,0,0,2,3,4,5,0,0,0,0,0,0},
+        {0,0,0,2,0,0,0,0,0,2,0,0,0},
+        {0,0,0,2,0,0,0,0,0,2,0,0,0},
+        {0,0,0,2,0,0,3,0,0,2,0,0,0},
+        {0,0,0,2,0,0,3,3,0,2,0,0,0},
+        {0,0,0,2,0,0,0,3,0,2,0,0,0},
+        {0,0,0,2,0,3,3,3,0,2,0,0,0},
+        {0,0,0,2,0,0,0,0,0,2,0,0,0},
+        {5,5,5,2,0,0,0,0,0,2,5,5,5},
         {0,0,0,0,0,0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {4,5,4,5,4,5,4,5,4,5,4,5,4},
+        {0,3,3,3,0,0,0,0,0,3,3,3,0},
+        {0,0,0,0,0,0,1,0,0,0,0,0,0},
     };
 
     memcpy(map, level1_map, sizeof(int) * GRID_SIZE * GRID_SIZE);
@@ -657,6 +712,8 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 
 // ------------------ Основная функция ------------------
 int main(void) {
+    srand(time(NULL));
+
     if (!glfwInit()) {
         fprintf(stderr, "Не удалось инициализировать GLFW\n");
         return -1;
@@ -666,7 +723,7 @@ int main(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Танчики", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "ТАНКИ - БОЕВАЯ АРЕНА", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Не удалось создать окно\n");
         glfwTerminate();
@@ -813,6 +870,42 @@ int main(void) {
                     }
                     lastKeyTime = currentTime;
                 }
+            }
+        }
+        else if (gameState == GAME_STATE_GAME_OVER) {
+         
+            if (currentTime - gameOverTimer >= 4.0) {
+                // Показываем меню выбора
+                if (currentTime - lastKeyTime > keyDelay) {
+                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                        lastKeyTime = currentTime;
+                    }
+                    else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem + 1) % 2;
+                        lastKeyTime = currentTime;
+                    }
+                    else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                        if (selectedMenuItem == 0) {
+                            // Играть заново
+                            load_level(selectedLevel);
+                            gameState = GAME_STATE_PLAYING;
+                            once = 0;
+                        }
+                        else {
+                            // В главное меню
+                            gameState = GAME_STATE_MENU;
+                            selectedMenuItem = 0;
+                        }
+                        lastKeyTime = currentTime;
+                    }
+                }
+            }
+
+            // Пропуск ожидания по пробелу
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && currentTime - lastKeyTime > keyDelay) {
+                gameOverTimer = glfwGetTime() - 4.0;
+                lastKeyTime = currentTime;
             }
         }
         else if (gameState == GAME_STATE_PLAYING) {
@@ -1086,6 +1179,15 @@ int main(void) {
                 gameState = GAME_STATE_MENU;
                 selectedMenuItem = 0;
             }
+
+            // Проверка смерти игрока
+            if (player.dead && !once) {
+                once = 1;
+                gameOverMessageIndex = rand() % gameOverMessagesCount;
+                gameOverTimer = glfwGetTime();
+                gameState = GAME_STATE_GAME_OVER;
+                selectedMenuItem = 0;
+            }
         }
 
         // Отрисовка
@@ -1212,13 +1314,13 @@ int main(void) {
 
             // UI
             char text[50];
-            sprintf(text, "Lives: %d", player.lives);
-            render_text(text, 20, 40, 0.8f, 1.0f, 1.0f, 1.0f);
+            sprintf(text, "LIVES: %d", player.lives);
+            render_text(text, 20, 40, 0.9f, 1.0f, 1.0f, 1.0f);
 
             int enemies = 0;
             for (int i = 0; i < MAX_BOTS; i++) if (bots[i].active) enemies++;
-            sprintf(text, "Enemies: %d", enemies);
-            render_text(text, 20, 80, 0.8f, 1.0f, 1.0f, 1.0f);
+            sprintf(text, "ENEMIES: %d", enemies);
+            render_text(text, 20, 90, 0.9f, 1.0f, 1.0f, 1.0f);
         }
         else if (gameState == GAME_STATE_MENU) {
             render_menu();
@@ -1226,15 +1328,17 @@ int main(void) {
         else if (gameState == GAME_STATE_LEVEL_SELECT) {
             render_level_select();
         }
+        else if (gameState == GAME_STATE_GAME_OVER) {
+            if (glfwGetTime() - gameOverTimer >= 4.0) {
+                render_death_menu();
+            }
+            else {
+                render_game_over_screen();
+            }
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
-
-        if (player.dead && gameState == GAME_STATE_PLAYING && !once) {
-            once = 1;
-            gameState = GAME_STATE_MENU;
-            selectedMenuItem = 0;
-        }
     }
 
     // Очистка
