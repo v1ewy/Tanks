@@ -1240,19 +1240,7 @@ int main(void) {
                 }
             }
 
-            // Листва
-            for (int j = 0; j < GRID_SIZE; j++) {
-                for (int i = 0; i < GRID_SIZE; i++) {
-                    if (is_foliage(i, j)) {
-                        model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
-                        model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
-                        model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
-                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                        glUniform4fv(colorLoc, 1, dark_green);
-                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-                    }
-                }
-            }
+           
 
             // Игрок
             if (!player.dead) {
@@ -1266,6 +1254,7 @@ int main(void) {
                     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 }
             }
+            
 
             // Боты
             for (int i = 0; i < MAX_BOTS; i++) {
@@ -1309,6 +1298,19 @@ int main(void) {
                     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
                     glUniform4fv(colorLoc, 1, white);
                     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                }
+            }
+            // Листва
+            for (int j = 0; j < GRID_SIZE; j++) {
+                for (int i = 0; i < GRID_SIZE; i++) {
+                    if (is_foliage(i, j)) {
+                        model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
+                        model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
+                        model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
+                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                        glUniform4fv(colorLoc, 1, dark_green);
+                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                    }
                 }
             }
 
