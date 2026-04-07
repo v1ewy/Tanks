@@ -151,12 +151,12 @@ int is_foliage(int x, int y);
 int is_wood(int x, int y);
 int check_rect_collision_with_map(int who, float cx, float cy, float w, float h, float bulletDirX, float bulletDirY);
 void load_level(int level_index);
-void init_font();
+void init_font(void);
 void render_text(const char* text, float x, float y, float scale, float r, float g, float b);
-void render_menu();
-void render_level_select();
-void render_game_over_screen();
-void render_death_menu();
+void render_menu(void);
+void render_level_select(void);
+void render_game_over_screen(void);
+void render_death_menu(void);
 
 // ------------------ Шейдеры ------------------
 const char* vertexShaderSource =
@@ -406,18 +406,12 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h,
 }
 
 // ------------------ Инициализация шрифта ------------------
-void init_font() {
-    const char* fontPaths[] = {
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/tahoma.ttf",
-        "C:/Windows/Fonts/consola.ttf"
-    };
+void init_font(void) {
+    const char* fontPaths = "Tanks/Assets/Fonts/arial.ttf"
+    ;
 
     FILE* fontFile = NULL;
-    for (int i = 0; i < 3; i++) {
-        fontFile = fopen(fontPaths[i], "rb");
-        if (fontFile) break;
-    }
+    fontFile = fopen(fontPaths, "rb");
 
     if (!fontFile) {
         fprintf(stderr, "Предупреждение: Шрифт не найден. Текст отображаться не будет.\n");
@@ -459,32 +453,45 @@ void render_text(const char* text, float x, float y, float scale, float r, float
 
     float currentX = x;
     float currentY = y;
+    
+    // Максимальное количество символов (можно увеличить при необходимости)
+    #define MAX_CHARS 256
+    #define VERTICES_PER_CHAR 6
+    #define FLOATS_PER_VERTEX 4
+    
+    float vertices[MAX_CHARS * VERTICES_PER_CHAR][FLOATS_PER_VERTEX];
+    int vertexCount = 0;
 
-    for (const char* p = text; *p; p++) {
-        if (*p >= 32 && *p < 128) {
+    for (const char* p = text; *p && vertexCount < MAX_CHARS * VERTICES_PER_CHAR; p++) {
+        unsigned char ch = (unsigned char)*p;  // Исправление 1: приведение к unsigned char
+        
+        if (ch >= 32 && ch < 128) {  // Теперь условие работает корректно
             stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(cdata, 512, 512, *p - 32, &currentX, &currentY, &q, 1);
-
-            float vertices[6][4] = {
-                {q.x0, q.y0, q.s0, q.t0},
-                {q.x1, q.y0, q.s1, q.t0},
-                {q.x1, q.y1, q.s1, q.t1},
-                {q.x0, q.y0, q.s0, q.t0},
-                {q.x1, q.y1, q.s1, q.t1},
-                {q.x0, q.y1, q.s0, q.t1}
-            };
-
-            glBindBuffer(GL_ARRAY_BUFFER, VBOText);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+            stbtt_GetBakedQuad(cdata, 512, 512, ch - 32, &currentX, &currentY, &q, 1);
+            
+            // Добавляем вершины текущего символа в общий буфер
+            float* v = vertices[vertexCount];
+            v[0] = q.x0; v[1] = q.y0; v[2] = q.s0; v[3] = q.t0; vertexCount++;
+            v[4] = q.x1; v[5] = q.y0; v[6] = q.s1; v[7] = q.t0; vertexCount++;
+            v[8] = q.x1; v[9] = q.y1; v[10] = q.s1; v[11] = q.t1; vertexCount++;
+            v[12] = q.x0; v[13] = q.y0; v[14] = q.s0; v[15] = q.t0; vertexCount++;
+            v[16] = q.x1; v[17] = q.y1; v[18] = q.s1; v[19] = q.t1; vertexCount++;
+            v[20] = q.x0; v[21] = q.y1; v[22] = q.s0; v[23] = q.t1; vertexCount++;
         }
+    }
+
+    // Отрисовываем все символы одним вызовом (Исправление 2: batch rendering)
+    if (vertexCount > 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, VBOText);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertexCount * FLOATS_PER_VERTEX, vertices, GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, vertexCount);
     }
 
     glBindVertexArray(0);
 }
 
 // ------------------ Отрисовка меню ------------------
-void render_menu() {
+void render_menu(void) {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
@@ -507,7 +514,7 @@ void render_menu() {
 }
 
 // ------------------ Отрисовка выбора уровня ------------------
-void render_level_select() {
+void render_level_select(void) {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
@@ -542,21 +549,20 @@ void render_level_select() {
 }
 
 // ------------------ Отрисовка Game Over ------------------
-void render_game_over_screen() {
+void render_game_over_screen(void) {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
     render_text("GAME OVER", centerX - 50, centerY - 10, 2.5f, 1.0f, 0.2f, 0.2f);
     render_text(gameOverMessages[gameOverMessageIndex], centerX - 200, centerY - 30, 1.3f, 1.0f, 0.8f, 0.2f);
 
-    char timerText[50];
     int remaining = (int)(4.0 - (glfwGetTime() - gameOverTimer));
     if (remaining < 0) remaining = 0;
     render_text("PRESS SPACE TO SKIP", centerX - 160, centerY + 180, 0.7f, 0.5f, 0.5f, 0.5f);
 }
 
 // ------------------ Отрисовка меню после смерти ------------------
-void render_death_menu() {
+void render_death_menu(void) {
     float centerX = windowWidth / 2;
     float centerY = windowHeight / 2;
 
@@ -712,7 +718,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 
 // ------------------ Основная функция ------------------
 int main(void) {
-    srand(time(NULL));
+    srand((unsigned int)time(NULL));
 
     if (!glfwInit()) {
         fprintf(stderr, "Не удалось инициализировать GLFW\n");
