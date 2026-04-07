@@ -9,6 +9,10 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+#include <bullet.h>
+#include <player.h>
+#include <bots.h>
+
 // ------------------ Константы ------------------
 //окно
 #define WINDOW_WIDTH_INIT 1920
@@ -60,35 +64,7 @@ Level levels[1];
 // Текущая карта
 int map[GRID_SIZE][GRID_SIZE];
 
-// ------------------ Структуры ------------------
-typedef struct {
-    double lastShootTime;
-    float x, y;
-    float dirX, dirY;
-    int active;
-} Bullet;
-
-typedef struct {
-    Bullet p_bullet;
-    float x, y;
-    int dead;
-    int lives;
-    float invincibleTimer;
-} Player;
-
-typedef struct {
-    Bullet b_bullet;
-    double deathTime;
-    double nextRotateTime;
-    float x, y;
-    float dirX, dirY;
-    int active;
-    float invincibleTimer;
-} Bot;
-
-typedef struct {
-    float x, y;
-} Spawner;
+// ----------------- Структура дерева -----------------
 
 typedef struct {
     int width, height;
