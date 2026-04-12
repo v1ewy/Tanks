@@ -9,6 +9,9 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <bullet.h>
 #include <player.h>
 #include <bots.h>
@@ -79,11 +82,16 @@ int outerX = 0, outerY = 0;
 
 Player player;
 Spawner sp_player;
+GLuint playerTexture;
 
 Bot bots[MAX_BOTS];
 Spawner sp_bots[GRID_SIZE * GRID_SIZE];
 
 Wood woods[GRID_SIZE][GRID_SIZE];
+
+GLuint spriteVAO;
+GLuint spriteVBO;
+GLuint spriteEBO;
 
 GameState gameState = GAME_STATE_MENU;
 int selectedMenuItem = 0;
@@ -138,20 +146,35 @@ void render_death_menu(void);
 const char* vertexShaderSource =
 "#version 330 core\n"
 "layout (location = 0) in vec2 aPos;\n"
+"layout (location = 1) in vec2 aTexCoord;\n"
+"out vec2 TexCoord;\n"
 "uniform mat4 uProjection;\n"
 "uniform mat4 uModel;\n"
+"uniform int useTexture;\n"
 "void main()\n"
 "{\n"
 "   gl_Position = uProjection * uModel * vec4(aPos, 0.0, 1.0);\n"
+"   if (useTexture == 1) {\n"
+"       TexCoord = aTexCoord;\n"
+"   } else {\n"
+"       TexCoord = aPos * 0.5 + 0.5;\n"
+"   }\n"
 "}\n";
 
 const char* fragmentShaderSource =
 "#version 330 core\n"
+"in vec2 TexCoord;\n"
 "out vec4 FragColor;\n"
 "uniform vec4 uColor;\n"
+"uniform sampler2D uTexture;\n"
+"uniform int useTexture;\n"
 "void main()\n"
 "{\n"
-"   FragColor = uColor;\n"
+"   if (useTexture == 1) {\n"
+"       FragColor = texture(uTexture, TexCoord);\n"
+"   } else {\n"
+"       FragColor = uColor;\n"
+"   }\n"
 "}\n";
 
 const char* textVertexShaderSource =
@@ -561,6 +584,56 @@ void render_death_menu(void) {
     render_text("W/S - Navigate     SPACE - Select", centerX - 280, centerY + 220, 0.7f, 0.5f, 0.5f, 0.5f);
 }
 
+GLuint load_texture(const char* path) {
+    int width, height, nrChannels;
+    unsigned char* data = stbi_load(path, &width, &height, &nrChannels, 0);
+    if (!data) {
+        fprintf(stderr, "Не удалось загрузить текстуру: %s\n", path);
+        return 0;
+    }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    
+    stbi_image_free(data);
+    return texture;
+}
+
+void build_model_matrix_rotated(float* matrix, float x, float y, float sx, float sy, float angle) {
+    float c = cosf(angle);
+    float s = sinf(angle);
+
+    matrix[0]  = sx * c;
+    matrix[1]  = sx * s;
+    matrix[2]  = 0.0f;
+    matrix[3]  = 0.0f;
+
+    matrix[4]  = -sy * s;
+    matrix[5]  = sy * c;
+    matrix[6]  = 0.0f;
+    matrix[7]  = 0.0f;
+
+    matrix[8]  = 0.0f;
+    matrix[9]  = 0.0f;
+    matrix[10] = 1.0f;
+    matrix[11] = 0.0f;
+
+    matrix[12] = x;
+    matrix[13] = y;
+    matrix[14] = 0.0f;
+    matrix[15] = 1.0f;
+}
+
 // ------------------ Загрузка уровня ------------------
 void load_level(int level_index) {
     // Инициализация уровня 1
@@ -728,6 +801,10 @@ int main(void) {
     GLint projLoc = glGetUniformLocation(shaderProgram, "uProjection");
     GLint modelLoc = glGetUniformLocation(shaderProgram, "uModel");
     GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
+    GLint useTextureLoc = glGetUniformLocation(shaderProgram, "useTexture");
+    GLint textureLoc = glGetUniformLocation(shaderProgram, "uTexture");
+    
+    glUniform1i(textureLoc, 0);
 
     // Шейдерная программа для текста
     shaderProgramText = create_program(textVertexShaderSource, textFragmentShaderSource);
@@ -748,6 +825,11 @@ int main(void) {
 
     // Инициализация шрифта
     init_font();
+    
+    playerTexture = load_texture("Tanks/Assets/Image/Player.png");
+    if (playerTexture == 0) {
+        printf("Внимание: текстура игрока не загружена, будет использоваться цвет\n");
+    }
 
     // Инициализация VAO для текста
     glGenVertexArrays(1, &VAOText);
@@ -763,9 +845,9 @@ int main(void) {
     // Создание VAO для квадратов
     float vertices[] = {
         -0.5f, -0.5f,
-        0.5f, -0.5f,
-        0.5f,  0.5f,
-        -0.5f,  0.5f
+         0.5f, -0.5f,
+         0.5f,  0.5f,
+        -0.5f,  0.5f,
     };
     unsigned int indices[] = { 0, 1, 2, 0, 2, 3 };
     GLuint VAO, VBO, EBO;
@@ -780,6 +862,36 @@ int main(void) {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+
+    float spriteVertices[] = {
+        -0.5f, -0.5f,     0.0f, 0.0f,
+         0.5f, -0.5f,     1.0f, 0.0f,
+         0.5f,  0.5f,     1.0f, 1.0f,
+        -0.5f,  0.5f,     0.0f, 1.0f
+    };
+    unsigned int spriteIndices[] = { 0, 1, 2, 0, 2, 3 };
+
+    glGenVertexArrays(1, &spriteVAO);
+    glGenBuffers(1, &spriteVBO);
+    glGenBuffers(1, &spriteEBO);
+
+    glBindVertexArray(spriteVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(spriteVertices), spriteVertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, spriteEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(spriteIndices), spriteIndices, GL_STATIC_DRAW);
+
+    // Атрибут позиции (location = 0)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Атрибут текстурных координат (location = 1)
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glBindVertexArray(0);
 
     // Загрузка уровня
@@ -895,16 +1007,13 @@ int main(void) {
             if (!player.dead) {
                 float dx = 0.0f, dy = 0.0f;
                 if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) dx -= 1.0f;
-                if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
-                if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
-                if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
-
-                if (dx != 0 && dy != 0) {
-                    dx *= 0.7071f;
-                    dy *= 0.7071f;
-                }
+                else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) dx += 1.0f;
+                else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) dy -= 1.0f;
+                else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
 
                 if (dx != 0 || dy != 0) {
+                    player.dirX = dx;
+                    player.dirY = dy;
                     if (!player.p_bullet.active) {
                         if (dx != 0) {
                             player.p_bullet.dirX = (dx > 0) ? 1 : -1;
@@ -1175,6 +1284,7 @@ int main(void) {
         // Отрисовка
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
+        glUniform1i(textureLoc, 0);
 
         if (gameState == GAME_STATE_PLAYING) {
             glUseProgram(shaderProgram);
@@ -1222,22 +1332,46 @@ int main(void) {
                 }
             }
 
-           
-
-            // Игрок
             if (!player.dead) {
                 int draw = 1;
-                if (player.invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2f) > 0.1f) draw = 0;
-                if (draw) {
-                    model[0] = PLAYER_SIZE; model[5] = PLAYER_SIZE;
-                    model[12] = player.x; model[13] = player.y;
+                if (player.invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2f) > 0.1f)
+                    draw = 0;
+
+                if (draw && playerTexture) {
+                    glBindVertexArray(spriteVAO);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, playerTexture);
+                    glUniform1i(useTextureLoc, 1);
+                    glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
+                    float angle = atan2f(player.dirX, -player.dirY);
+
+                    // Матрица модели с вращением
+                    float model[16];
+                    build_model_matrix_rotated(model, player.x, player.y, PLAYER_SIZE, PLAYER_SIZE, angle);
+
                     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+                    glUniform1i(useTextureLoc, 0);
+                    glBindVertexArray(VAO);
+                }
+                else if (draw) {
+                    // fallback на зелёный квадрат
+                    glBindVertexArray(VAO);
+                    glUniform1i(useTextureLoc, 0);
                     glUniform4fv(colorLoc, 1, green);
+
+                    float model[16] = {0};
+                    model[0] = PLAYER_SIZE; model[5] = PLAYER_SIZE;
+                    model[10] = 1.0f; model[15] = 1.0f;
+                    model[12] = player.x; model[13] = player.y;
+
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
                     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 }
             }
             
-
             // Боты
             for (int i = 0; i < MAX_BOTS; i++) {
                 if (bots[i].active) {

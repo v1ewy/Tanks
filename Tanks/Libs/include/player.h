@@ -15,6 +15,7 @@ typedef struct {
     float x, y;
     int dead;
     int lives;
+    int dirX, dirY;
     float invincibleTimer;
 } Player;
 
