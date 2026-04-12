@@ -13,10 +13,10 @@
 typedef struct {
     Bullet p_bullet;
     float x, y;
+    float dirX, dirY;
+    float invincibleTimer;
     int dead;
     int lives;
-    int dirX, dirY;
-    float invincibleTimer;
 } Player;
 
 typedef struct {

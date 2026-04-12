@@ -83,15 +83,18 @@ int outerX = 0, outerY = 0;
 Player player;
 Spawner sp_player;
 GLuint playerTexture;
+int playerFrame = 0;
+double playerAnimTimer = 0.0;
+const int NUM_PLAYER_FRAMES = 4;
+const float PLAYER_FRAME_WIDTH = 1.0f / 4.0f;
+const float ANIM_FRAME_DURATION = 0.08f;
 
 Bot bots[MAX_BOTS];
 Spawner sp_bots[GRID_SIZE * GRID_SIZE];
 
-Wood woods[GRID_SIZE][GRID_SIZE];
+GLuint bulletTexture;
 
-GLuint spriteVAO;
-GLuint spriteVBO;
-GLuint spriteEBO;
+Wood woods[GRID_SIZE][GRID_SIZE];
 
 GameState gameState = GAME_STATE_MENU;
 int selectedMenuItem = 0;
@@ -675,6 +678,8 @@ void load_level(int level_index) {
 
     player.x = sp_player.x;
     player.y = sp_player.y;
+    player.dirX = 0.0f;
+    player.dirY = -1.0f;
     player.dead = 0;
     player.lives = 3;
     player.invincibleTimer = 0.0f;
@@ -830,6 +835,11 @@ int main(void) {
     if (playerTexture == 0) {
         printf("Внимание: текстура игрока не загружена, будет использоваться цвет\n");
     }
+    
+    bulletTexture = load_texture("Tanks/Assets/Image/Bullet.png");
+    if (bulletTexture == 0) {
+        printf("Внимание: текстура игрока не загружена, будет использоваться цвет\n");
+    }
 
     // Инициализация VAO для текста
     glGenVertexArrays(1, &VAOText);
@@ -850,6 +860,7 @@ int main(void) {
         -0.5f,  0.5f,
     };
     unsigned int indices[] = { 0, 1, 2, 0, 2, 3 };
+    
     GLuint VAO, VBO, EBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -871,7 +882,8 @@ int main(void) {
         -0.5f,  0.5f,     0.0f, 1.0f
     };
     unsigned int spriteIndices[] = { 0, 1, 2, 0, 2, 3 };
-
+    
+    GLuint spriteVAO, spriteVBO, spriteEBO;
     glGenVertexArrays(1, &spriteVAO);
     glGenBuffers(1, &spriteVBO);
     glGenBuffers(1, &spriteEBO);
@@ -879,16 +891,14 @@ int main(void) {
     glBindVertexArray(spriteVAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(spriteVertices), spriteVertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(spriteVertices), spriteVertices, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, spriteEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(spriteIndices), spriteIndices, GL_STATIC_DRAW);
 
-    // Атрибут позиции (location = 0)
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Атрибут текстурных координат (location = 1)
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
@@ -1033,6 +1043,16 @@ int main(void) {
                     if (!check_rect_collision_with_map(1, player.x, newY, PLAYER_SIZE, PLAYER_SIZE, 0, 0)) {
                         player.y = newY;
                     }
+                }
+                if (dx != 0.0f || dy != 0.0f) {
+                    playerAnimTimer += deltaTime;
+                    if (playerAnimTimer >= ANIM_FRAME_DURATION) {
+                        playerAnimTimer = 0.0f;
+                        playerFrame = (playerFrame + 1) % NUM_PLAYER_FRAMES;
+                    }
+                } else {
+                    playerFrame = 0;
+                    playerAnimTimer = 0.0f;
                 }
             }
 
@@ -1344,9 +1364,21 @@ int main(void) {
                     glUniform1i(useTextureLoc, 1);
                     glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
 
+                    float u0 = (float)playerFrame * PLAYER_FRAME_WIDTH;
+                    float u1 = u0 + PLAYER_FRAME_WIDTH;
+
+                    float animVertices[16] = {
+                        -0.5f, -0.5f, u0, 0.0f,
+                         0.5f, -0.5f, u1, 0.0f,
+                         0.5f,  0.5f, u1, 1.0f,
+                        -0.5f,  0.5f, u0, 1.0f
+                    };
+
+                    glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(animVertices), animVertices);
+
                     float angle = atan2f(player.dirX, -player.dirY);
 
-                    // Матрица модели с вращением
                     float model[16];
                     build_model_matrix_rotated(model, player.x, player.y, PLAYER_SIZE, PLAYER_SIZE, angle);
 
@@ -1357,7 +1389,6 @@ int main(void) {
                     glBindVertexArray(VAO);
                 }
                 else if (draw) {
-                    // fallback на зелёный квадрат
                     glBindVertexArray(VAO);
                     glUniform1i(useTextureLoc, 0);
                     glUniform4fv(colorLoc, 1, green);
@@ -1389,31 +1420,88 @@ int main(void) {
 
             // Пуля игрока
             if (player.p_bullet.active) {
-                if (player.p_bullet.dirX != 0) {
-                    model[0] = BULLET_WIDTH; model[5] = BULLET_HEIGHT;
+                if (bulletTexture) {
+                    glBindVertexArray(spriteVAO);
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, bulletTexture);
+                    glUniform1i(useTextureLoc, 1);
+                    glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
+                    // Настройка UV (вся текстура целиком)
+                    float u0 = 0.0f, u1 = 1.0f, v0 = 0.0f, v1 = 1.0f;
+                    float bulletVerts[16] = {
+                        -0.5f, -0.5f, u0, v0,
+                         0.5f, -0.5f, u1, v0,
+                         0.5f,  0.5f, u1, v1,
+                        -0.5f,  0.5f, u0, v1
+                    };
+                    glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(bulletVerts), bulletVerts);
+
+                    float angle = atan2f(player.p_bullet.dirX, -player.p_bullet.dirY) + M_PI_2;
+
+                    float modelBullet[16];
+                    build_model_matrix_rotated(modelBullet, player.p_bullet.x, player.p_bullet.y, BULLET_WIDTH, BULLET_HEIGHT, angle);
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, modelBullet);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+                    glUniform1i(useTextureLoc, 0);
+                    glBindVertexArray(VAO);
+                } else {
+                    if (player.p_bullet.dirX != 0) {
+                        model[0] = BULLET_WIDTH; model[5] = BULLET_HEIGHT;
+                    } else {
+                        model[0] = BULLET_HEIGHT; model[5] = BULLET_WIDTH;
+                    }
+                    model[12] = player.p_bullet.x; model[13] = player.p_bullet.y;
+                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                    glUniform4fv(colorLoc, 1, white);
+                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 }
-                else {
-                    model[0] = BULLET_HEIGHT; model[5] = BULLET_WIDTH;
-                }
-                model[12] = player.p_bullet.x; model[13] = player.p_bullet.y;
-                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                glUniform4fv(colorLoc, 1, white);
-                glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
             }
 
             // Пули ботов
             for (int i = 0; i < MAX_BOTS; i++) {
                 if (bots[i].b_bullet.active) {
-                    if (bots[i].b_bullet.dirX != 0) {
-                        model[0] = BULLET_WIDTH; model[5] = BULLET_HEIGHT;
+                    if (bulletTexture) {
+                        glBindVertexArray(spriteVAO);
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, bulletTexture);
+                        glUniform1i(useTextureLoc, 1);
+                        glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+                        
+                        // Настройка UV (вся текстура целиком)
+                        float u0 = 0.0f, u1 = 1.0f, v0 = 0.0f, v1 = 1.0f;
+                        float bulletVerts[16] = {
+                            -0.5f, -0.5f, u0, v0,
+                            0.5f, -0.5f, u1, v0,
+                            0.5f,  0.5f, u1, v1,
+                            -0.5f,  0.5f, u0, v1
+                        };
+                        glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(bulletVerts), bulletVerts);
+                        
+                        float angle = atan2f(bots[i].b_bullet.dirX, -bots[i].b_bullet.dirY) + M_PI_2;
+                        
+                        float modelBullet[16];
+                        build_model_matrix_rotated(modelBullet, bots[i].b_bullet.x, bots[i].b_bullet.y, BULLET_WIDTH, BULLET_HEIGHT, angle);
+                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, modelBullet);
+                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                        
+                        glUniform1i(useTextureLoc, 0);
+                        glBindVertexArray(VAO);
+                    } else {
+                        if (bots[i].b_bullet.dirX != 0) {
+                            model[0] = BULLET_WIDTH; model[5] = BULLET_HEIGHT;
+                        }
+                        else {
+                            model[0] = BULLET_HEIGHT; model[5] = BULLET_WIDTH;
+                        }
+                        model[12] = bots[i].b_bullet.x; model[13] = bots[i].b_bullet.y;
+                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                        glUniform4fv(colorLoc, 1, white);
+                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                     }
-                    else {
-                        model[0] = BULLET_HEIGHT; model[5] = BULLET_WIDTH;
-                    }
-                    model[12] = bots[i].b_bullet.x; model[13] = bots[i].b_bullet.y;
-                    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                    glUniform4fv(colorLoc, 1, white);
-                    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                 }
             }
             // Листва
@@ -1463,11 +1551,16 @@ int main(void) {
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
+    glDeleteVertexArrays(1, &spriteVAO);
+    glDeleteBuffers(1, &spriteVBO);
+    glDeleteBuffers(1, &spriteEBO);
     glDeleteProgram(shaderProgram);
     if (shaderProgramText) glDeleteProgram(shaderProgramText);
     if (fontTexture) glDeleteTextures(1, &fontTexture);
     if (VAOText) glDeleteVertexArrays(1, &VAOText);
     if (VBOText) glDeleteBuffers(1, &VBOText);
+    if (playerTexture) glDeleteTextures(1, &playerTexture);
+    if (bulletTexture) glDeleteTextures(1, &bulletTexture);
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
