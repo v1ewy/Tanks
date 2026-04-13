@@ -383,7 +383,7 @@ int check_rect_collision_with_map(int who, float cx, float cy, float w, float h,
 
 // ------------------ Инициализация шрифта ------------------
 void init_font(void) {
-    const char* fontPaths = "Tanks/Assets/Fonts/arial.ttf"
+    const char* fontPaths = "C:/Windows/Fonts/arial.ttf"
     ;
 
     FILE* fontFile = NULL;
