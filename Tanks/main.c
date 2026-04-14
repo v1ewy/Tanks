@@ -93,6 +93,8 @@ Bot bots[MAX_BOTS];
 Spawner sp_bots[GRID_SIZE * GRID_SIZE];
 
 GLuint bulletTexture;
+GLuint wallTexture;
+GLuint woodTexture;
 
 Wood woods[GRID_SIZE][GRID_SIZE];
 
@@ -840,6 +842,16 @@ int main(void) {
     if (bulletTexture == 0) {
         printf("Внимание: текстура игрока не загружена, будет использоваться цвет\n");
     }
+    
+    wallTexture = load_texture("Tanks/Assets/Image/Wall.png");
+    if (wallTexture == 0) {
+        printf("Внимание: текстура Wall.png не загружена, будет цвет\n");
+    }
+
+    woodTexture = load_texture("Tanks/Assets/Image/Wood.png");
+    if (woodTexture == 0) {
+        printf("Внимание: текстура Wood.png не загружена, будет цвет\n");
+    }
 
     // Инициализация VAO для текста
     glGenVertexArrays(1, &VAOText);
@@ -1328,12 +1340,49 @@ int main(void) {
             // Блоки
             for (int j = 0; j < GRID_SIZE; j++) {
                 for (int i = 0; i < GRID_SIZE; i++) {
-                    if (is_wall(i, j) || is_water(i, j)) {
+                    if (is_wall(i, j)) {
+                        if (wallTexture) {
+                            glBindVertexArray(spriteVAO);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, wallTexture);
+                            glUniform1i(useTextureLoc, 1);
+                            glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
+                            float verts[16] = {
+                                -0.5f, -0.5f, 0.0f, 0.0f,
+                                 0.5f, -0.5f, 1.0f, 0.0f,
+                                 0.5f,  0.5f, 1.0f, 1.0f,
+                                -0.5f,  0.5f, 0.0f, 1.0f
+                            };
+                            glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+                            float model[16] = {0};
+                            build_model_matrix_rotated(model,
+                                fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f,
+                                fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f,
+                                BLOCK_SIZE, BLOCK_SIZE, 0.0f);
+
+                            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+                            glUniform1i(useTextureLoc, 0);
+                            glBindVertexArray(VAO);
+                        } else {
+                            model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
+                            model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
+                            model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
+                            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                            glUniform4fv(colorLoc, 1, gray);
+                            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                        }
+                    }
+                    else if (is_water(i, j)) {
                         model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
                         model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
                         model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
                         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                        glUniform4fv(colorLoc, 1, is_wall(i, j) ? gray : blue);
+                        glUniform4fv(colorLoc, 1, blue);
                         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
                     }
                 }
@@ -1342,7 +1391,60 @@ int main(void) {
             // Деревья
             for (int j = 0; j < GRID_SIZE; j++) {
                 for (int i = 0; i < GRID_SIZE; i++) {
-                    if (is_wood(i, j)) {
+                    if (is_wood(i, j) && woodTexture) {
+                        glBindVertexArray(spriteVAO);
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, woodTexture);
+                        glUniform1i(useTextureLoc, 1);
+                        glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
+                        float originalCenterX = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                        float originalCenterY = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+
+                        float currHalfW = woods[j][i].width / 2.0f;
+                        float currHalfH = woods[j][i].height / 2.0f;
+
+                        float currLeft = woods[j][i].x - currHalfW;
+                        float currTop  = woods[j][i].y - currHalfH;
+
+                        float origLeft = originalCenterX - 32.0f;
+                        float origTop  = originalCenterY - 32.0f;
+
+                        float u0 = (currLeft - origLeft) / 64.0f;
+                        float v0 = (currTop  - origTop)  / 64.0f;
+                        float u1 = u0 + (woods[j][i].width  / 64.0f);
+                        float v1 = v0 + (woods[j][i].height / 64.0f);
+
+                        u0 = fmaxf(0.0f, u0);
+                        v0 = fmaxf(0.0f, v0);
+                        u1 = fminf(1.0f, u1);
+                        v1 = fminf(1.0f, v1);
+
+                        float verts[16] = {
+                            -0.5f, -0.5f, u0, v0,
+                             0.5f, -0.5f, u1, v0,
+                             0.5f,  0.5f, u1, v1,
+                            -0.5f,  0.5f, u0, v1
+                        };
+
+                        glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+                        float model[16] = {0};
+                        build_model_matrix_rotated(model,
+                            woods[j][i].x,
+                            woods[j][i].y,
+                            woods[j][i].width,
+                            woods[j][i].height,
+                            0.0f);
+
+                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+                        glUniform1i(useTextureLoc, 0);
+                        glBindVertexArray(VAO);
+                    }
+                    else if (is_wood(i, j)) {
                         model[0] = woods[j][i].width; model[5] = woods[j][i].height;
                         model[12] = woods[j][i].x; model[13] = woods[j][i].y;
                         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
@@ -1561,6 +1663,8 @@ int main(void) {
     if (VBOText) glDeleteBuffers(1, &VBOText);
     if (playerTexture) glDeleteTextures(1, &playerTexture);
     if (bulletTexture) glDeleteTextures(1, &bulletTexture);
+    if (wallTexture) glDeleteTextures(1, &wallTexture);
+    if (woodTexture) glDeleteTextures(1, &woodTexture);
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
