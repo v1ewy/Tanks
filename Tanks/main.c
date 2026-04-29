@@ -95,6 +95,7 @@ Spawner sp_bots[GRID_SIZE * GRID_SIZE];
 GLuint bulletTexture;
 GLuint wallTexture;
 GLuint woodTexture;
+GLuint waterTexture;
 
 Wood woods[GRID_SIZE][GRID_SIZE];
 
@@ -643,18 +644,18 @@ void build_model_matrix_rotated(float* matrix, float x, float y, float sx, float
 void load_level(int level_index) {
     // Инициализация уровня 1
     int level1_map[GRID_SIZE][GRID_SIZE] = {
-        {0,0,6,0,0,0,0,0,0,0,6,0,0},
-        {0,0,0,2,0,0,0,0,0,2,0,0,0},
-        {0,0,0,2,0,0,0,0,0,2,0,0,0},
-        {0,0,0,2,0,0,3,0,0,2,0,0,0},
-        {0,0,0,2,0,0,3,3,0,2,0,0,0},
-        {0,0,0,2,0,0,0,3,0,2,0,0,0},
-        {0,0,0,2,0,3,3,3,0,2,0,0,0},
-        {0,0,0,2,0,0,0,0,0,2,0,0,0},
-        {5,5,5,2,0,0,0,0,0,2,5,5,5},
+        {0,0,0,0,0,0,6,0,0,0,0,0,0},
+        {0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {0,0,0,2,2,2,2,2,2,2,0,0,0},
+        {0,0,0,2,2,2,2,2,2,2,0,0,0},
+        {0,0,0,2,2,2,2,2,2,2,0,0,0},
+        {0,0,0,2,2,2,2,2,2,2,0,0,0},
+        {5,5,5,2,2,2,2,2,2,2,0,0,0},
+        {5,5,5,2,2,2,2,2,2,2,0,0,0},
+        {5,5,5,2,2,2,2,2,2,2,5,5,5},
         {0,0,0,0,0,0,0,0,0,0,0,0,0},
         {4,5,4,5,4,5,4,5,4,5,4,5,4},
-        {0,3,3,3,0,0,0,0,0,3,3,3,0},
+        {0,3,3,2,0,0,0,0,0,3,3,3,0},
         {0,0,0,0,0,0,1,0,0,0,0,0,0},
     };
 
@@ -848,9 +849,14 @@ int main(void) {
         printf("Внимание: текстура Wall.png не загружена, будет цвет\n");
     }
 
-    woodTexture = load_texture("Tanks/Assets/Image/Wood.png");
+    woodTexture = load_texture("Tanks/Assets/Image/Wood1.png");
     if (woodTexture == 0) {
         printf("Внимание: текстура Wood.png не загружена, будет цвет\n");
+    }
+    
+    waterTexture = load_texture("Tanks/Assets/Image/Water.png");
+    if (waterTexture == 0) {
+        printf("Внимание: текстура Water.png не загружена, будет цвет\n");
     }
 
     // Инициализация VAO для текста
@@ -1378,12 +1384,41 @@ int main(void) {
                         }
                     }
                     else if (is_water(i, j)) {
-                        model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
-                        model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
-                        model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
-                        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
-                        glUniform4fv(colorLoc, 1, blue);
-                        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                        if (waterTexture) {
+                            glBindVertexArray(spriteVAO);
+                            glActiveTexture(GL_TEXTURE0);
+                            glBindTexture(GL_TEXTURE_2D, waterTexture);
+                            glUniform1i(useTextureLoc, 1);
+                            glUniform4f(colorLoc, 1.0f, 1.0f, 1.0f, 1.0f);
+
+                            float verts[16] = {
+                                -0.5f, -0.5f, 0.0f, 0.0f,
+                                 0.5f, -0.5f, 1.0f, 0.0f,
+                                 0.5f,  0.5f, 1.0f, 1.0f,
+                                -0.5f,  0.5f, 0.0f, 1.0f
+                            };
+                            glBindBuffer(GL_ARRAY_BUFFER, spriteVBO);
+                            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+                            float model[16] = {0};
+                            build_model_matrix_rotated(model,
+                                fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f,
+                                fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f,
+                                BLOCK_SIZE, BLOCK_SIZE, 0.0f);
+
+                            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+                            glUniform1i(useTextureLoc, 0);
+                            glBindVertexArray(VAO);
+                        } else {
+                            model[0] = BLOCK_SIZE; model[5] = BLOCK_SIZE;
+                            model[12] = fieldX + i * CELL_SIZE + CELL_SIZE / 2;
+                            model[13] = fieldY + j * CELL_SIZE + CELL_SIZE / 2;
+                            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, model);
+                            glUniform4fv(colorLoc, 1, blue);
+                            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+                        }
                     }
                 }
             }
