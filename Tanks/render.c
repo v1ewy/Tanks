@@ -58,21 +58,6 @@ void draw_rect(float x, float y, float w, float h, float* color)
     glBindVertexArray(gRender.VAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
-
-// Прямоугольник + цифра/буква по центру
-void draw_rect_with_label(float x, float y, float w, float h,
-                          float* color, const char* label,
-                          float lr, float lg, float lb)
-{
-    draw_rect(x, y, w, h, color);
-
-    // Смещение чтобы текст был примерно по центру прямоугольника
-    float tx = x - w * 0.15f;
-    float ty = y + h * 0.20f;
-    extern void render_text(const char*, float, float, float, float, float, float);
-    render_text(label, tx, ty, 0.8f, lr, lg, lb);
-}
-
 // ─────────────────────────────────────────────
 //  Карта
 // ─────────────────────────────────────────────
@@ -91,18 +76,18 @@ void render_map(void)
 
             switch (map[j][i]) {
             case 2: // стена
-                draw_rect_with_label(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                     COL_GRAY, "5", 0.0f, 0.0f, 0.0f);
+                draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                     COL_GRAY);
                 break;
             case 3: // вода
-                draw_rect_with_label(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                     COL_BLUE, "4", 1.0f, 1.0f, 1.0f);
+                draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                     COL_BLUE);
                 break;
             case 5: // дерево (разрушаемое)
                 if (woods[j][i].width > 0 && woods[j][i].height > 0) {
-                    draw_rect_with_label(woods[j][i].x, woods[j][i].y,
+                    draw_rect(woods[j][i].x, woods[j][i].y,
                                         woods[j][i].width, woods[j][i].height,
-                                        COL_ORANGE, "6", 0.0f, 0.0f, 0.0f);
+                                        COL_ORANGE);
                 }
                 break;
             default:
@@ -120,8 +105,8 @@ void render_foliage(void)
             if (map[j][i] == 4) {
                 float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
                 float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                draw_rect_with_label(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                     COL_DARK_GREEN, "7", 1.0f, 1.0f, 1.0f);
+                draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                     COL_DARK_GREEN);
             }
         }
     }
@@ -138,16 +123,16 @@ void render_player(void)
     // Мигание при неуязвимости
     if (player.invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1) goto draw_bullet;
 
-    draw_rect_with_label(player.x, player.y,
+    draw_rect(player.x, player.y,
                          PLAYER_SIZE, PLAYER_SIZE,
-                         COL_GREEN, "1", 0.0f, 0.0f, 0.0f);
+                         COL_GREEN);
 
 draw_bullet:
     if (player.p_bullet.active) {
         float w = (player.p_bullet.dirX != 0) ? BULLET_WIDTH  : BULLET_HEIGHT;
         float h = (player.p_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
-        draw_rect_with_label(player.p_bullet.x, player.p_bullet.y,
-                             w, h, COL_YELLOW, "3", 0.0f, 0.0f, 0.0f);
+        draw_rect(player.p_bullet.x, player.p_bullet.y,
+                             w, h, COL_YELLOW);
     }
 }
 
@@ -161,16 +146,16 @@ void render_bots(void)
         if (!bots[i].active) continue;
 
         if (!(bots[i].invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1)) {
-            draw_rect_with_label(bots[i].x, bots[i].y,
+            draw_rect(bots[i].x, bots[i].y,
                                  BOT_SIZE, BOT_SIZE,
-                                 COL_RED, "2", 1.0f, 1.0f, 1.0f);
+                                 COL_RED);
         }
 
         if (bots[i].b_bullet.active) {
             float w = (bots[i].b_bullet.dirX != 0) ? BULLET_WIDTH  : BULLET_HEIGHT;
             float h = (bots[i].b_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
-            draw_rect_with_label(bots[i].b_bullet.x, bots[i].b_bullet.y,
-                                 w, h, COL_YELLOW, "3", 0.0f, 0.0f, 0.0f);
+            draw_rect(bots[i].b_bullet.x, bots[i].b_bullet.y,
+                                 w, h, COL_YELLOW);
         }
     }
 }

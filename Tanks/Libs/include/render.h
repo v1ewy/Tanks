@@ -31,9 +31,6 @@ void render_init(GLuint shaderProgram, GLuint VAO,
 
 // Базовые примитивы
 void draw_rect(float x, float y, float w, float h, float* color);
-void draw_rect_with_label(float x, float y, float w, float h,
-                          float* color, const char* label,
-                          float lr, float lg, float lb);
 
 // Отрисовка игровых объектов
 void render_map(void);
