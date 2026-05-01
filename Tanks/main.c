@@ -18,6 +18,7 @@
 #include <render.h>
 #include <menu.h>
 #include <levels.h>
+#include <texture.h>
 
 // ─────────────────────────────────────────────
 //  Константы окна и поля
@@ -108,6 +109,29 @@ const char* fragmentShaderSource =
     "void main()\n"
     "{\n"
     "   FragColor = uColor;\n"
+    "}\n";
+
+const char* texVertexShaderSource =
+    "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "layout (location = 1) in vec2 aTexCoord;\n"
+    "uniform mat4 uProjection;\n"
+    "uniform mat4 uModel;\n"
+    "out vec2 TexCoord;\n"
+    "void main()\n"
+    "{\n"
+    "    gl_Position = uProjection * uModel * vec4(aPos, 0.0, 1.0);\n"
+    "    TexCoord = aTexCoord;\n"
+    "}\n";
+
+const char* texFragmentShaderSource =
+    "#version 330 core\n"
+    "in vec2 TexCoord;\n"
+    "out vec4 FragColor;\n"
+    "uniform sampler2D uTexture;\n"
+    "void main()\n"
+    "{\n"
+    "    FragColor = texture(uTexture, TexCoord);\n"
     "}\n";
 
 const char* textVertexShaderSource =
@@ -395,8 +419,15 @@ int main(void)
     glBindVertexArray(0);
 
     // ── VAO для квадратов ──
-    float quadVerts[] = { -0.5f,-0.5f, 0.5f,-0.5f, 0.5f,0.5f, -0.5f,0.5f };
+    // Вершины: pos(x,y) + uv(u,v)
+    float quadVerts[] = {
+        -0.5f, -0.5f,  0.0f, 0.0f,
+         0.5f, -0.5f,  1.0f, 0.0f,
+         0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f,  0.5f,  0.0f, 1.0f
+    };
     unsigned int quadIdx[] = { 0,1,2, 0,2,3 };
+
     GLuint VAO, VBO, EBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -406,12 +437,26 @@ int main(void)
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIdx), quadIdx, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+
+    // aPos
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    // aTexCoord
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     glBindVertexArray(0);
 
-    // ── Инициализация модулей ──
+    // Создаём текстурный шейдер
+    GLuint texShaderProgram = create_program(texVertexShaderSource, texFragmentShaderSource);
+    GLint  texProjLoc   = glGetUniformLocation(texShaderProgram, "uProjection");
+    GLint  texModelLoc  = glGetUniformLocation(texShaderProgram, "uModel");
+
+    textures_load();
+
+    // render_init — добавить новые параметры:
     render_init(shaderProgram, VAO, modelLoc, colorLoc, projLoc,
+                texShaderProgram, texModelLoc, texProjLoc,
                 shaderProgramText, VAOText, VBOText,
                 projLocText, textColorLoc, fontTexture);
     levels_init();
@@ -476,31 +521,38 @@ int main(void)
 
         // ── Ввод: game over ──
         else if (gameState == GAME_STATE_GAME_OVER) {
-            // Пропуск анимации
-            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
-                currentTime - lastKeyTime > keyDelay) {
-                gameOverTimer = currentTime - 4.0;
-                lastKeyTime   = currentTime;
+            double timePassed = currentTime - gameOverTimer;
+
+            if (timePassed < 4.0) {
+                // Логика пропуска анимации: работает только пока 4 секунды не прошли
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
+                    currentTime - lastKeyTime > keyDelay) {
+                    gameOverTimer = currentTime - 4.0; // Сбрасываем таймер в "конец"
+                    lastKeyTime   = currentTime;
+                }
             }
-            // Меню после анимации
-            if (currentTime - gameOverTimer >= 4.0 &&
-                currentTime - lastKeyTime > keyDelay) {
-                if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
-                    lastKeyTime = currentTime;
-                } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem + 1) % 2;
-                    lastKeyTime = currentTime;
-                } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                    if (selectedMenuItem == 0) {
-                        load_level(selectedLevel);
-                        gameState = GAME_STATE_PLAYING;
-                        once      = 0;
-                    } else {
-                        gameState        = GAME_STATE_MENU;
-                        selectedMenuItem = 0;
+            else {
+                // Логика меню: работает ТОЛЬКО после завершения/пропуска анимации
+                if (currentTime - lastKeyTime > keyDelay) {
+                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                        lastKeyTime = currentTime;
                     }
-                    lastKeyTime = currentTime;
+                    else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem + 1) % 2;
+                        lastKeyTime = currentTime;
+                    }
+                    else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                        if (selectedMenuItem == 0) {
+                            load_level(selectedLevel);
+                            gameState = GAME_STATE_PLAYING;
+                            once      = 0;
+                        } else {
+                            gameState        = GAME_STATE_MENU;
+                            selectedMenuItem = 0;
+                        }
+                        lastKeyTime = currentTime;
+                    }
                 }
             }
         }
@@ -521,13 +573,20 @@ int main(void)
                         fieldX, fieldY, FIELD_SIZE,
                         sp_bots, spawn_count);
 
-            // Победа: нет ботов и нет спавн-точек
             int anyBot = 0;
             for (int i = 0; i < MAX_BOTS; i++)
                 if (bots[i].active) anyBot = 1;
             if (!anyBot && spawn_count == 0) {
                 gameState        = GAME_STATE_MENU;
                 selectedMenuItem = 0;
+            }
+            // Победа ботов — база уничтожена
+            if (base_is_destroyed()) {
+                gameOverMessageIndex = rand() % gameOverMessagesCount;
+                gameOverTimer        = glfwGetTime();
+                gameState            = GAME_STATE_GAME_OVER;
+                selectedMenuItem     = 0;
+                once                 = 1;
             }
 
             // Смерть игрока
@@ -554,6 +613,7 @@ int main(void)
                       OUTER_SIZE, OUTER_SIZE, gray);
 
             render_map();     // карта: стены, вода, деревья
+            render_base();  
             render_player();  // игрок + его пуля
             render_bots();    // боты + их пули
             render_foliage(); // листва — поверх всего

@@ -8,6 +8,9 @@
 
 Player  player;
 Spawner sp_player;
+int gPlayerMoving = 0;
+float gPlayerDirX = 0.0f;
+float gPlayerDirY = -1.0f;
 
 void player_update(void* window, float deltaTime, double currentTime,
                    int fieldX, int fieldY, int fieldSize)
@@ -23,6 +26,9 @@ void player_update(void* window, float deltaTime, double currentTime,
         else if (glfwGetKey(win, GLFW_KEY_S) == GLFW_PRESS) dy += 1.0f;
 
         if (dx != 0.0f || dy != 0.0f) {
+            gPlayerMoving = 1;
+            gPlayerDirX = dx;
+            gPlayerDirY = dy;
             // Запоминаем направление для пули
             if (!player.p_bullet.active) {
                 if (dx != 0.0f) {
