@@ -105,13 +105,9 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                             if (dx < (w + BOT_SIZE) / 2.0f && dy < (h + BOT_SIZE) / 2.0f) {
                                 if (bots[k].invincibleTimer <= 0.0f) {
                                     bots[k].hp--;
-                                    bots[k].flashTimer = 10; // мигнёт при попадании
                                     if (bots[k].hp <= 0) {
                                         bots[k].active    = 0;
                                         bots[k].deathTime = glfwGetTime();
-                                    } else {
-                                        // Бронированный — получил урон но жив
-                                        bots[k].invincibleTimer = 0.5f; // короткая неуязвимость после удара
                                     }
                                     return 1;
                                 }

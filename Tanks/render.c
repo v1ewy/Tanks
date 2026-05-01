@@ -305,21 +305,7 @@ void render_bots(void) {
                  || (bots[i].flashTimer > 0 && bots[i].flashTimer % 2 == 0);
         if (!blink) {
             float* color = bot_color(bots[i].type);
-
-            if (bots[i].type == BOT_ARMORED) {
-                float dark[4] = {0.3f, 0.3f, 0.3f, 1.0f};
-                draw_rect(bots[i].x, bots[i].y - BOT_SIZE/2.0f - 6,
-                          BOT_SIZE, 5, dark);
-                float hpColor[4] = {0.0f, 1.0f, 0.0f, 1.0f};
-                float hpW = BOT_SIZE * (bots[i].hp / 3.0f);
-                draw_rect(bots[i].x - (BOT_SIZE - hpW) / 2.0f,
-                          bots[i].y - BOT_SIZE/2.0f - 6,
-                          hpW, 5, hpColor);
-            }
-
-            color[3] = 0.4f;
             draw_rect(bots[i].x, bots[i].y, BOT_SIZE, BOT_SIZE, color);
-            color[3] = 1.0f;
         }
 
         if (bots[i].b_bullet.active) {

@@ -35,8 +35,8 @@ typedef struct {
     int      active;
     float    invincibleTimer;
     BotType  type;
-    int      hp;          // хиты (у бронированного = 3)
-    int      flashTimer;  // мигание при попадании
+    int      hp;
+    int      flashTimer;
 } Bot;
 
 // База
