@@ -50,6 +50,7 @@ void render_bullet(float x, float y, float w, float h,
                    float dirX, float dirY);
 void render_foliage(void);
 void render_player(void);
+void render_base(void);
 void render_bots(void);
 void render_hud(void);
 

@@ -32,6 +32,7 @@ void render_init(GLuint shaderProgram, GLuint VAO,
     gRender.fontTexture      = fontTexture;
 }
 
+float w[4] = {1.0f, 1.0f, 1.0f, 0.75f};
 // ── Цветной прямоугольник ──────────────────────
 void draw_rect(float x, float y, float w, float h, float* color)
 {
@@ -144,8 +145,7 @@ void render_rotated_uv(float x, float y, float w, float h,
 }
 
 // ── Карта ─────────────────────────────────────
-void render_map(void)
-{
+void render_map(void) {
     float black[4] = {0,0,0,1};
     draw_rect(fieldX + FIELD_SIZE/2.0f, fieldY + FIELD_SIZE/2.0f,
               FIELD_SIZE, FIELD_SIZE, black);
@@ -156,29 +156,32 @@ void render_map(void)
             float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
 
             switch (map[j][i]) {
-            case 2: // стена
-                draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                   gTextures.wall);
-                break;
-            case 3: // вода
-                draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                   gTextures.water);
-                break;
-            case 5:
-                if (woods[j][i].width > 0 && woods[j][i].height > 0) {
-                    Wood* w = &woods[j][i];
-                    float invTexSize = 1.0f / 64.0f;
-                    float u0 = w->uv_u;
-                    float v0 = w->uv_v;
-                    float u1 = u0 + w->width  * invTexSize;
-                    float v1 = v0 + w->height * invTexSize;
+                case 2: // стена
+                    draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                       gTextures.wall);
+                    break;
+                case 3: // вода
+                    draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                       gTextures.water);
+                    break;
+                case 5:
+                    if (woods[j][i].width > 0 && woods[j][i].height > 0) {
+                        Wood* w = &woods[j][i];
+                        float invTexSize = 1.0f / 64.0f;
+                        float u0 = w->uv_u;
+                        float v0 = w->uv_v;
+                        float u1 = u0 + w->width  * invTexSize;
+                        float v1 = v0 + w->height * invTexSize;
 
-                    render_rotated_uv(w->x, w->y,
-                                      w->width, w->height,
-                                      gTextures.wood,
-                                      u0, v0, u1, v1, 0);
-                }
-                break;
+                        render_rotated_uv(w->x, w->y,
+                                          w->width, w->height,
+                                          gTextures.wood,
+                                          u0, v0, u1, v1, 0);
+                    }
+                    break;
+                case 7:
+                    draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE, w);
+                    break;
             }
         }
     }
@@ -186,11 +189,7 @@ void render_map(void)
 
 // render.c — отдельная функция для пули с поворотом
 void render_bullet(float x, float y, float w, float h,
-                   float dirX, float dirY)
-{
-    // Текстура смотрит ВЛЕВО — это наш базовый угол
-    // Всегда рисуем в исходных размерах BULLET_WIDTH x BULLET_HEIGHT
-    // и поворачиваем, не меняя размеры местами
+                   float dirX, float dirY) {
     float angle = 0.0f;
     if      (dirX >  0) angle =  3.14159f;               // вправо — зеркало влево = 0°
     else if (dirX <  0) angle =  0.0f;            // влево  — исходная текстура
@@ -206,8 +205,7 @@ void render_bullet(float x, float y, float w, float h,
 }
 
 // ── Листва (поверх всего) ─────────────────────
-void render_foliage(void)
-{
+void render_foliage(void) {
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 4) {
@@ -271,21 +269,66 @@ draw_player_bullet:
 }
 
 // ── Боты ──────────────────────────────────────
-void render_bots(void)
+// Цвета по типу бота
+static float* bot_color(BotType type)
 {
+    static float red[]    = {1.0f, 0.0f, 0.0f, 1.0f}; // обычный
+    static float yellow[] = {1.0f, 1.0f, 0.0f, 1.0f}; // гончая
+    static float orange[] = {1.0f, 0.5f, 0.0f, 1.0f}; // охотник
+    static float silver[] = {0.7f, 0.7f, 0.7f, 1.0f}; // бронированный
+    switch (type) {
+    case BOT_HOUND:   return yellow;
+    case BOT_HUNTER:  return orange;
+    case BOT_ARMORED: return silver;
+    default:          return red;
+    }
+}
+
+void render_base(void) {
+    if (!gBase.alive) return;
+
+    // Цвет меняется по HP: зелёный → жёлтый → красный
+    float r = (gBase.hp == 3) ? 0.0f : (gBase.hp == 2) ? 1.0f : 1.0f;
+    float g = (gBase.hp == 3) ? 1.0f : (gBase.hp == 2) ? 1.0f : 0.0f;
+    float b = 0.0f, a = 1.0f;
+    float color[4] = {r, g, b, a};
+
+    draw_rect(gBase.x, gBase.y, gBase.width, gBase.height, color);
+
+    extern void render_text(const char*, float, float, float, float, float, float);
+    char txt[8];
+    sprintf(txt, "HP:%d", gBase.hp);
+    render_text(txt, gBase.x - 25, gBase.y + 8, 0.6f, 1.0f, 1.0f, 1.0f);
+}
+
+void render_bots(void) {
     for (int i = 0; i < MAX_BOTS; i++) {
         if (!bots[i].active) continue;
 
-        if (!(bots[i].invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1))
-            draw_textured_rect(bots[i].x, bots[i].y,
-                               BOT_SIZE, BOT_SIZE,
-                               gTextures.bot);
+        int blink = (bots[i].invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1)
+                 || (bots[i].flashTimer > 0 && bots[i].flashTimer % 2 == 0);
+        if (!blink) {
+            float* color = bot_color(bots[i].type);
+
+            if (bots[i].type == BOT_ARMORED) {
+                float dark[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+                draw_rect(bots[i].x, bots[i].y - BOT_SIZE/2.0f - 6,
+                          BOT_SIZE, 5, dark);
+                float hpColor[4] = {0.0f, 1.0f, 0.0f, 1.0f};
+                float hpW = BOT_SIZE * (bots[i].hp / 3.0f);
+                draw_rect(bots[i].x - (BOT_SIZE - hpW) / 2.0f,
+                          bots[i].y - BOT_SIZE/2.0f - 6,
+                          hpW, 5, hpColor);
+            }
+
+            color[3] = 0.4f;
+            draw_rect(bots[i].x, bots[i].y, BOT_SIZE, BOT_SIZE, color);
+            color[3] = 1.0f;
+        }
 
         if (bots[i].b_bullet.active) {
-            float w = (bots[i].b_bullet.dirX != 0) ? BULLET_WIDTH  : BULLET_HEIGHT;
-            float h = (bots[i].b_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
             render_bullet(bots[i].b_bullet.x, bots[i].b_bullet.y,
-                          w, h,
+                          BULLET_WIDTH, BULLET_HEIGHT,
                           bots[i].b_bullet.dirX, bots[i].b_bullet.dirY);
         }
     }

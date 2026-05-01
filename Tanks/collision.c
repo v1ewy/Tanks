@@ -20,6 +20,10 @@ static int _is_wood(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 0;
     return map[y][x] == 5;
 }
+static int _is_base(int x, int y) {
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 0;
+    return map[y][x] == 7;
+}
 
 int check_rect_collision_with_map(int who, float cx, float cy,
                             float w, float h,
@@ -44,7 +48,7 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                         dy < (h + woods[j][i].height) / 2.0f) return 1;
                 } else {
                     for (int k = 0; k < MAX_BOTS; k++) {
-                        if (bots[k].active) {
+                        if (bots[k].active && bots[k].invincibleTimer <= 0.0f) {
                             float dx = fabsf(cx - bots[k].x);
                             float dy = fabsf(cy - bots[k].y);
                             if (dx < (w + BOT_SIZE) / 2.0f &&
@@ -81,21 +85,35 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                         if (bots[k].active) {
                             float dx = fabsf(cx - bots[k].x);
                             float dy = fabsf(cy - bots[k].y);
-                            if (dx < (w + BOT_SIZE) / 2.0f &&
-                                dy < (h + BOT_SIZE) / 2.0f) {
+                            if (dx < (w + BOT_SIZE) / 2.0f && dy < (h + BOT_SIZE) / 2.0f) {
                                 if (bots[k].invincibleTimer <= 0.0f) {
-                                    bots[k].active   = 0;
-                                    bots[k].deathTime = glfwGetTime();
+                                    bots[k].hp--;
+                                    bots[k].flashTimer = 10; // мигнёт при попадании
+                                    if (bots[k].hp <= 0) {
+                                        bots[k].active    = 0;
+                                        bots[k].deathTime = glfwGetTime();
+                                    } else {
+                                        // Бронированный — получил урон но жив
+                                        bots[k].invincibleTimer = 0.5f; // короткая неуязвимость после удара
+                                    }
+                                    return 1;
                                 }
-                                return 1;
                             }
                         }
+                    }
+                    if (gBase.alive) {
+                        float dx = fabsf(cx - gBase.x);
+                        float dy = fabsf(cy - gBase.y);
+                        if (dx < (w + gBase.width)  / 2.0f &&
+                            dy < (h + gBase.height) / 2.0f)
+                            return 1;
                     }
                 }
                 break;
 
             case COLLISION_BOT_BULLET:
                 if (_is_wall(i,j)) return 1;
+                if (_is_base(i,j)) return 1;
                 if (_is_wood(i,j)) {
                     float dx = fabsf(cx - woods[j][i].x);
                     float dy = fabsf(cy - woods[j][i].y);
@@ -129,6 +147,16 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                         }
                         return 1;
                     }
+                    if (gBase.alive) {
+                        float dx = fabsf(cx - gBase.x);
+                        float dy = fabsf(cy - gBase.y);
+                        if (dx < (w + gBase.width)  / 2.0f &&
+                            dy < (h + gBase.height) / 2.0f) {
+                            gBase.hp--;
+                            if (gBase.hp <= 0) gBase.alive = 0;
+                            return 1;
+                        }
+                    }
                 }
                 break;
 
@@ -149,10 +177,12 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                                 dy < (h + BOT_SIZE) / 2.0f) return 1;
                         }
                     }
-                    float dxP = fabsf(cx - player.x);
-                    float dyP = fabsf(cy - player.y);
-                    if (dxP < (w + PLAYER_SIZE) / 2.0f &&
-                        dyP < (h + PLAYER_SIZE) / 2.0f) return 1;
+                    if (player.invincibleTimer <= 0.0f) {
+                        float dxP = fabsf(cx - player.x);
+                        float dyP = fabsf(cy - player.y);
+                        if (dxP < (w + PLAYER_SIZE) / 2.0f &&
+                            dyP < (h + PLAYER_SIZE) / 2.0f) return 1;
+                    }
                 }
                 break;
             }

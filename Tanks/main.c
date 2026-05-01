@@ -566,13 +566,20 @@ int main(void)
                         fieldX, fieldY, FIELD_SIZE,
                         sp_bots, spawn_count);
 
-            // Победа: нет ботов и нет спавн-точек
             int anyBot = 0;
             for (int i = 0; i < MAX_BOTS; i++)
                 if (bots[i].active) anyBot = 1;
             if (!anyBot && spawn_count == 0) {
                 gameState        = GAME_STATE_MENU;
                 selectedMenuItem = 0;
+            }
+            // Победа ботов — база уничтожена
+            if (base_is_destroyed()) {
+                gameOverMessageIndex = rand() % gameOverMessagesCount;
+                gameOverTimer        = glfwGetTime();
+                gameState            = GAME_STATE_GAME_OVER;
+                selectedMenuItem     = 0;
+                once                 = 1;
             }
 
             // Смерть игрока
@@ -599,6 +606,7 @@ int main(void)
                       OUTER_SIZE, OUTER_SIZE, gray);
 
             render_map();     // карта: стены, вода, деревья
+            render_base();  
             render_player();  // игрок + его пуля
             render_bots();    // боты + их пули
             render_foliage(); // листва — поверх всего
