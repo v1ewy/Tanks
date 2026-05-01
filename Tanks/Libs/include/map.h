@@ -7,8 +7,9 @@
 #define FIELD_SIZE 832
 
 typedef struct {
-    int   width, height;
     float x, y;
+    float width, height;
+    float uv_u, uv_v;
 } Wood;
 
 typedef struct { float x, y; } Spawner;

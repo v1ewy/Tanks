@@ -127,8 +127,10 @@ void load_level(int index)
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 5) {
-                woods[j][i].width  = CELL_SIZE;
-                woods[j][i].height = CELL_SIZE;
+                woods[j][i].width      = CELL_SIZE;
+                woods[j][i].height     = CELL_SIZE;
+                woods[j][i].uv_u = 0.0f;
+                woods[j][i].uv_v = 0.0f;
                 woods[j][i].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
                 woods[j][i].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
             }

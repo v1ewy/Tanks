@@ -64,9 +64,13 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                         if (bulletDirX != 0) {
                             woods[j][i].width -= 16;
                             woods[j][i].x += bulletDirX * 8.0f;
+                            if (bulletDirX > 0)
+                                woods[j][i].uv_u += 16.0f / 64.0f;
                         } else {
                             woods[j][i].height -= 16;
                             woods[j][i].y += bulletDirY * 8.0f;
+                            if (bulletDirY < 0)
+                                woods[j][i].uv_v += 16.0f / 64.0f;
                         }
                         if (woods[j][i].width <= 0 || woods[j][i].height <= 0)
                             map[j][i] = 0;
