@@ -41,6 +41,13 @@ int check_rect_collision_with_map(int who, float cx, float cy,
 
             case COLLISION_PLAYER:
                 if (_is_wall(i,j) || _is_water(i,j)) return 1;
+                if (gBase.alive) {
+                    float dx = fabsf(cx - gBase.x);
+                    float dy = fabsf(cy - gBase.y);
+                    if (dx < (w + gBase.width)  / 2.0f &&
+                        dy < (h + gBase.height) / 2.0f)
+                        return 1;
+                }
                 if (_is_wood(i,j)) {
                     float dx = fabsf(cx - woods[j][i].x);
                     float dy = fabsf(cy - woods[j][i].y);
@@ -83,6 +90,16 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                 } else {
                     for (int k = 0; k < MAX_BOTS; k++) {
                         if (bots[k].active) {
+                            if (bots[k].b_bullet.active) {
+                                float bdx = fabsf(cx - bots[k].b_bullet.x);
+                                float bdy = fabsf(cy - bots[k].b_bullet.y);
+                                float bw = (bots[k].b_bullet.dirX != 0) ? BULLET_WIDTH : BULLET_HEIGHT;
+                                float bh = (bots[k].b_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
+                                if (bdx < (w + bw) / 2.0f && bdy < (h + bh) / 2.0f) {
+                                    bots[k].b_bullet.active = 0;
+                                    return 1;
+                                }
+                            }
                             float dx = fabsf(cx - bots[k].x);
                             float dy = fabsf(cy - bots[k].y);
                             if (dx < (w + BOT_SIZE) / 2.0f && dy < (h + BOT_SIZE) / 2.0f) {
@@ -130,6 +147,16 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                             map[j][i] = 0;
                         return 1;
                     }
+                }
+                else if (player.p_bullet.active) {
+                        float pdx = fabsf(cx - player.p_bullet.x);
+                        float pdy = fabsf(cy - player.p_bullet.y);
+                        float pw = (player.p_bullet.dirX != 0) ? BULLET_WIDTH : BULLET_HEIGHT;
+                        float ph = (player.p_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
+                        if (pdx < (w + pw) / 2.0f && pdy < (h + ph) / 2.0f) {
+                            player.p_bullet.active = 0;
+                            return 1;
+                        }
                 } else {
                     float dx = fabsf(cx - player.x);
                     float dy = fabsf(cy - player.y);
@@ -162,6 +189,13 @@ int check_rect_collision_with_map(int who, float cx, float cy,
 
             case COLLISION_BOT:
                 if (_is_wall(i,j) || _is_water(i,j)) return 1;
+                if (gBase.alive) {
+                    float dx = fabsf(cx - gBase.x);
+                    float dy = fabsf(cy - gBase.y);
+                    if (dx < (w + gBase.width)  / 2.0f &&
+                        dy < (h + gBase.height) / 2.0f)
+                        return 1;
+                }
                 if (_is_wood(i,j)) {
                     float dx = fabsf(cx - woods[j][i].x);
                     float dy = fabsf(cy - woods[j][i].y);

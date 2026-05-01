@@ -32,7 +32,6 @@ void render_init(GLuint shaderProgram, GLuint VAO,
     gRender.fontTexture      = fontTexture;
 }
 
-float w[4] = {1.0f, 1.0f, 1.0f, 0.75f};
 // ── Цветной прямоугольник ──────────────────────
 void draw_rect(float x, float y, float w, float h, float* color)
 {
@@ -178,9 +177,6 @@ void render_map(void) {
                                           gTextures.wood,
                                           u0, v0, u1, v1, 0);
                     }
-                    break;
-                case 7:
-                    draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE, w);
                     break;
             }
         }

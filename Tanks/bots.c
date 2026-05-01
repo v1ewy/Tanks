@@ -243,28 +243,6 @@ void bots_update(float deltaTime, double currentTime,
         bullet_update(&bots[i].b_bullet, COLLISION_BOT_BULLET,
                       deltaTime, fieldX, fieldY, fieldSize);
 
-        // ── Проверка попадания пули игрока в базу ─────────────────────
-        // (делается в collision.c, но добавим проверку пули игрока здесь)
-    }
-
-    // ── Проверка попадания пуль ботов в базу ─────────────────────────
-    // (уже обрабатывается в collision.c через COLLISION_BOT_BULLET)
-
-    // ── Проверка столкновения ботов с базой (таран) ───────────────────
-    if (gBase.alive) {
-        for (int i = 0; i < MAX_BOTS; i++) {
-            if (!bots[i].active) continue;
-            float dx = fabsf(bots[i].x - gBase.x);
-            float dy = fabsf(bots[i].y - gBase.y);
-            if (dx < (BOT_SIZE + gBase.width)  / 2.0f &&
-                dy < (BOT_SIZE + gBase.height) / 2.0f)
-            {
-                // Бот таранит базу
-                gBase.hp--;
-                bots[i].active    = 0;
-                bots[i].deathTime = currentTime;
-                if (gBase.hp <= 0) gBase.alive = 0;
-            }
-        }
+    
     }
 }
