@@ -521,31 +521,38 @@ int main(void)
 
         // ── Ввод: game over ──
         else if (gameState == GAME_STATE_GAME_OVER) {
-            // Пропуск анимации
-            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
-                currentTime - lastKeyTime > keyDelay) {
-                gameOverTimer = currentTime - 4.0;
-                lastKeyTime   = currentTime;
+            double timePassed = currentTime - gameOverTimer;
+
+            if (timePassed < 4.0) {
+                // Логика пропуска анимации: работает только пока 4 секунды не прошли
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
+                    currentTime - lastKeyTime > keyDelay) {
+                    gameOverTimer = currentTime - 4.0; // Сбрасываем таймер в "конец"
+                    lastKeyTime   = currentTime;
+                }
             }
-            // Меню после анимации
-            if (currentTime - gameOverTimer >= 4.0 &&
-                currentTime - lastKeyTime > keyDelay) {
-                if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
-                    lastKeyTime = currentTime;
-                } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem + 1) % 2;
-                    lastKeyTime = currentTime;
-                } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                    if (selectedMenuItem == 0) {
-                        load_level(selectedLevel);
-                        gameState = GAME_STATE_PLAYING;
-                        once      = 0;
-                    } else {
-                        gameState        = GAME_STATE_MENU;
-                        selectedMenuItem = 0;
+            else {
+                // Логика меню: работает ТОЛЬКО после завершения/пропуска анимации
+                if (currentTime - lastKeyTime > keyDelay) {
+                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                        lastKeyTime = currentTime;
                     }
-                    lastKeyTime = currentTime;
+                    else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem + 1) % 2;
+                        lastKeyTime = currentTime;
+                    }
+                    else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                        if (selectedMenuItem == 0) {
+                            load_level(selectedLevel);
+                            gameState = GAME_STATE_PLAYING;
+                            once      = 0;
+                        } else {
+                            gameState        = GAME_STATE_MENU;
+                            selectedMenuItem = 0;
+                        }
+                        lastKeyTime = currentTime;
+                    }
                 }
             }
         }
