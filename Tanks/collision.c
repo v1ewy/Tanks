@@ -200,7 +200,7 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                 } else {
                     int self = (int)bulletDirX;
                     for (int k = 0; k < MAX_BOTS; k++) {
-                        if (bots[k].active && k != self) {
+                        if (bots[k].active && k != self && bots[k].invincibleTimer <= 0.0f) {
                             float dx = fabsf(cx - bots[k].x);
                             float dy = fabsf(cy - bots[k].y);
                             if (dx < (w + BOT_SIZE) / 2.0f &&

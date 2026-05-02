@@ -8,177 +8,324 @@
 #include <player.h>
 #include <collision.h>
 #include <map.h>
+#include <pathfinding.h>
+#include <levels.h>
 
-Bot  bots[MAX_BOTS];
-Base gBase;
+Bot     bots[MAX_BOTS];
+Base    gBase;
 Spawner sp_bots[GRID_SIZE * GRID_SIZE];
 
 // ── База ──────────────────────────────────────────────────────────────
-void base_init(int fieldX, int fieldY) {
+void base_init(int fieldX, int fieldY)
+{
     gBase.width  = 64.0f;
     gBase.height = 64.0f;
-    // Нижний центр карты — предпоследняя строка по центру
     gBase.x      = fieldX + (GRID_SIZE / 2) * CELL_SIZE + CELL_SIZE / 2.0f;
     gBase.y      = fieldY + (GRID_SIZE - 1) * CELL_SIZE + CELL_SIZE / 2.0f;
     gBase.hp     = 3;
     gBase.alive  = 1;
 }
 
-int base_is_destroyed(void) {
-    return !gBase.alive;
-}
+int base_is_destroyed(void) { return !gBase.alive; }
 
-// ── Вспомогательная логика ИИ ─────────────────────────────────────────
-
-static int reservation[GRID_SIZE][GRID_SIZE];
-
-static float bot_speed(BotType type) {
+// ── Вспомогалки ───────────────────────────────────────────────────────
+static float bot_speed(BotType type)
+{
     switch (type) {
-        case BOT_HOUND:   return BOT_SPEED_HOUND;   // Желтые (быстрые)
-        case BOT_HUNTER:  return BOT_SPEED_HUNTER;  // Охотники
-        case BOT_ARMORED: return BOT_SPEED_ARMORED;
-        default:          return BOT_SPEED_NORMAL;
+    case BOT_HOUND:   return BOT_SPEED_HOUND;
+    case BOT_HUNTER:  return BOT_SPEED_HUNTER;
+    case BOT_ARMORED: return BOT_SPEED_ARMORED;
+    default:          return BOT_SPEED_NORMAL;
     }
 }
 
-// Оценка стоимости клетки
-static int get_tile_cost(int x, int y, int selfIdx) {
-    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 1000;
-    
-    // Если клетка забронирована другим ботом — она очень дорогая
-    if (reservation[y][x] != -1 && reservation[y][x] != selfIdx) return 50;
-
-    int tile = map[y][x];
-    if (tile == 0 || tile == 4) return 1;    // Пусто/Трава
-    if (tile == 5) return 10;               // Дерево
-    if (tile == 2 || tile == 3) return 1000; // Стена/Вода[cite: 12]
-    return 1;
+static int bot_hp(BotType type)
+{
+    return (type == BOT_ARMORED) ? 3 : 1;
 }
 
-static void bot_choose_best_direction(Bot* b, int selfIdx, float tx, float ty, int fX, int fY) {
-    int curI = (int)((b->x - fX) / CELL_SIZE);
-    int curJ = (int)((b->y - fY) / CELL_SIZE);
+static int world_to_grid(float worldPos, int fieldOrigin)
+{
+    return (int)((worldPos - fieldOrigin) / CELL_SIZE);
+}
 
-    float bestScore = 1e10f;
-    float bestDX = 0, bestDY = 0;
-    float dirs[4][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+static float grid_to_world(int cell, int fieldOrigin)
+{
+    return fieldOrigin + cell * CELL_SIZE + CELL_SIZE / 2.0f;
+}
 
-    for (int i = 0; i < 4; i++) {
-        int nextI = curI + (int)dirs[i][0];
-        int nextJ = curJ + (int)dirs[i][1];
+// Прямая видимость игрока по горизонтали или вертикали
+static int bot_has_line_of_sight(Bot* b, int fieldX, int fieldY)
+{
+    int bi = world_to_grid(b->x, fieldX);
+    int bj = world_to_grid(b->y, fieldY);
+    int pi = world_to_grid(player.x, fieldX);
+    int pj = world_to_grid(player.y, fieldY);
 
-        int cost = get_tile_cost(nextI, nextJ, selfIdx);
-        if (cost >= 1000) continue;
+    if (bi != pi && bj != pj) return 0;
 
-        // Расстояние от центра целевой клетки до цели
-        float targetCellX = nextI * CELL_SIZE + fX + CELL_SIZE/2;
-        float targetCellY = nextJ * CELL_SIZE + fY + CELL_SIZE/2;
-        float dist = sqrtf(powf(targetCellX - tx, 2) + powf(targetCellY - ty, 2));
-        
-        float score = dist + (cost * CELL_SIZE);
+    if (bi == pi) {
+        int minJ = (bj < pj) ? bj : pj;
+        int maxJ = (bj > pj) ? bj : pj;
+        for (int j = minJ + 1; j < maxJ; j++)
+            if (map[j][bi] == 2 || map[j][bi] == 3) return 0;
+        return 1;
+    } else {
+        int minI = (bi < pi) ? bi : pi;
+        int maxI = (bi > pi) ? bi : pi;
+        for (int i = minI + 1; i < maxI; i++)
+            if (map[bj][i] == 2 || map[bj][i] == 3) return 0;
+        return 1;
+    }
+}
 
-        if (score < bestScore) {
-            bestScore = score;
-            bestDX = dirs[i][0];
-            bestDY = dirs[i][1];
+static void bot_try_shoot(Bot* b, float tx, float ty, double currentTime)
+{
+    if (b->b_bullet.active) return;
+    if (currentTime - b->b_bullet.lastShootTime < BOT_SHOOT_DELAY) return;
+
+    float dx = tx - b->x;
+    float dy = ty - b->y;
+
+    float sdx = 0.0f, sdy = 0.0f;
+    if (fabsf(dx) > fabsf(dy)) sdx = (dx > 0) ? 1.0f : -1.0f;
+    else                        sdy = (dy > 0) ? 1.0f : -1.0f;
+
+    b->b_bullet.dirX          = sdx;
+    b->b_bullet.dirY          = sdy;
+    b->b_bullet.active        = 1;
+    b->b_bullet.x             = b->x + sdx * BOT_SIZE / 2.0f;
+    b->b_bullet.y             = b->y + sdy * BOT_SIZE / 2.0f;
+    b->b_bullet.lastShootTime = currentTime;
+}
+
+// ── Спавн одного бота из очереди уровня ──────────────────────────────
+static void spawn_next_bot(Spawner* spawnPoints, int spawnCount,
+                           double currentTime)
+{
+    if (spawnCount <= 0) return;
+
+    Level* lvl = &levels[currentLevelIndex];
+    if (botQueueIndex >= lvl->botCount) return;
+
+    // Считаем активных ботов
+    int activeCount = 0;
+    for (int i = 0; i < MAX_BOTS; i++)
+        if (bots[i].active) activeCount++;
+    if (activeCount >= MAX_BOTS) return;
+
+    BotWave* wave = &lvl->botQueue[botQueueIndex];
+
+    // Индекс точки спавна из очереди
+    int spIdx = wave->spawnPointIndex;
+    if (spIdx >= spawnCount) spIdx = 0;
+
+    // Проверяем что точка спавна свободна
+    for (int k = 0; k < MAX_BOTS; k++) {
+        if (!bots[k].active) continue;
+        float dx = fabsf(bots[k].x - spawnPoints[spIdx].x);
+        float dy = fabsf(bots[k].y - spawnPoints[spIdx].y);
+        if (dx < BOT_SIZE && dy < BOT_SIZE) return; // занято — ждём
+    }
+
+    // Ищем свободный слот
+    for (int i = 0; i < MAX_BOTS; i++) {
+        if (!bots[i].active &&
+            (bots[i].deathTime == 0 ||
+             currentTime - bots[i].deathTime >= BOT_SPAWN_INTERVAL))
+        {
+            bots[i].x               = spawnPoints[spIdx].x;
+            bots[i].y               = spawnPoints[spIdx].y;
+            bots[i].type            = wave->type;
+            bots[i].speed           = bot_speed(wave->type);
+            bots[i].hp              = bot_hp(wave->type);
+            bots[i].dirX            = 0.0f;
+            bots[i].dirY            = 0.0f;
+            bots[i].active          = 1;
+            bots[i].invincibleTimer = INVINCIBLE_DURATION;
+            bots[i].flashTimer      = 0;
+            bots[i].deathTime       = 0.0;
+            bots[i].stuckTimer      = currentTime;
+            bots[i].b_bullet.active = 0;
+            bots[i].b_bullet.lastShootTime = currentTime;
+            bots[i].targetCellX     = -1;
+            bots[i].targetCellY     = -1;
+
+            botQueueIndex++;
+            return;
         }
     }
-
-    // Если нашли путь, бронируем клетку
-    if (bestDX != 0 || bestDY != 0) {
-        b->dirX = bestDX;
-        b->dirY = bestDY;
-        int nextI = curI + (int)bestDX;
-        int nextJ = curJ + (int)bestDY;
-        if (nextI >= 0 && nextI < GRID_SIZE && nextJ >= 0 && nextJ < GRID_SIZE) {
-            reservation[nextJ][nextI] = selfIdx;
-        }
-    }
 }
 
+// ── Основное обновление ───────────────────────────────────────────────
 void bots_update(float deltaTime, double currentTime,
                  int fieldX, int fieldY, int fieldSize,
                  Spawner* spawnPoints, int spawnCount)
 {
-    // Очистка брони перед циклом
-    for(int y=0; y<GRID_SIZE; y++) for(int x=0; x<GRID_SIZE; x++) reservation[y][x] = -1;
+    if (!gBase.alive) return;
 
-    // Спавн (без изменений)[cite: 12]
-    static double lastSpawn = 0;
-    if (currentTime - lastSpawn > BOT_SPAWN_INTERVAL) {
-        for (int i = 0; i < MAX_BOTS; i++) {
-            if (!bots[i].active) {
-                int sIdx = rand() % spawnCount;
-                bots[i].active = 1;
-                bots[i].x = spawnPoints[sIdx].x;
-                bots[i].y = spawnPoints[sIdx].y;
-                bots[i].type = (BotType)(rand() % 4);
-                bots[i].speed = bot_speed(bots[i].type);
-                bots[i].hp = (bots[i].type == BOT_ARMORED) ? 3 : 1;
-                bots[i].dirX = 0; bots[i].dirY = 1;
-                bots[i].nextRotateTime = 0;
-                lastSpawn = currentTime;
-                break;
-            }
-        }
+    // ── Спавн из очереди ──────────────────────────────────────────────
+    static double lastSpawn = 0.0;
+    if (currentTime - lastSpawn >= BOT_SPAWN_INTERVAL) {
+        spawn_next_bot(spawnPoints, spawnCount, currentTime);
+        lastSpawn = currentTime;
     }
+
+    float halfB = BOT_SIZE / 2.0f;
+    float minXb = fieldX + halfB;
+    float maxXb = fieldX + fieldSize - halfB;
+    float minYb = fieldY + halfB;
+    float maxYb = fieldY + fieldSize - halfB;
 
     for (int i = 0; i < MAX_BOTS; i++) {
         if (!bots[i].active) continue;
 
-        float tx, ty;
-        // Охотники (Hunter) едут к игроку, остальные — к базе[cite: 12]
-        if (bots[i].type == BOT_HUNTER) { tx = player.x; ty = player.y; }
-        else { tx = gBase.x; ty = gBase.y; }
+        // ── Таймеры ───────────────────────────────────────────────────
+        if (bots[i].invincibleTimer > 0.0f) {
+            bots[i].invincibleTimer -= deltaTime;
+            if (bots[i].invincibleTimer < 0.0f) bots[i].invincibleTimer = 0.0f;
+        }
+        if (bots[i].flashTimer > 0) bots[i].flashTimer--;
 
-        // 1. Логика выбора клетки
-        int curI = (int)((bots[i].x - fieldX) / CELL_SIZE);
-        int curJ = (int)((bots[i].y - fieldY) / CELL_SIZE);
-        float centerX = curI * CELL_SIZE + fieldX + CELL_SIZE/2;
-        float centerY = curJ * CELL_SIZE + fieldY + CELL_SIZE/2;
+        // ── Текущая клетка ────────────────────────────────────────────
+        int bi = world_to_grid(bots[i].x, fieldX);
+        int bj = world_to_grid(bots[i].y, fieldY);
 
-        // Пересчитываем путь, если бот в центре клетки или стоит
-        float dToCenter = sqrtf(powf(bots[i].x - centerX, 2) + powf(bots[i].y - centerY, 2));
-        if (dToCenter < 5.0f || (bots[i].dirX == 0 && bots[i].dirY == 0)) {
-            bot_choose_best_direction(&bots[i], i, tx, ty, fieldX, fieldY);
+        // ── Цель по типу ──────────────────────────────────────────────
+        int goalI, goalJ;
+        switch (bots[i].type) {
+        case BOT_HOUND:
+            goalI = world_to_grid(gBase.x, fieldX);
+            goalJ = world_to_grid(gBase.y, fieldY);
+            break;
+        case BOT_HUNTER:
+            goalI = world_to_grid(player.x, fieldX);
+            goalJ = world_to_grid(player.y, fieldY);
+            break;
+        default: // BOT_NORMAL, BOT_ARMORED — едут к базе
+            goalI = world_to_grid(gBase.x, fieldX);
+            goalJ = world_to_grid(gBase.y, fieldY);
+            break;
         }
 
-        // 2. Плавное выравнивание по оси
-        if (bots[i].dirY != 0) {
-            float dx = centerX - bots[i].x;
-            if (fabsf(dx) > 0.5f) bots[i].x += (dx > 0 ? 1 : -1) * bots[i].speed * 0.5f * deltaTime;
-        } else if (bots[i].dirX != 0) {
-            float dy = centerY - bots[i].y;
-            if (fabsf(dy) > 0.5f) bots[i].y += (dy > 0 ? 1 : -1) * bots[i].speed * 0.5f * deltaTime;
+        // ── Стрельба по типу ──────────────────────────────────────────
+        switch (bots[i].type) {
+        case BOT_HOUND:
+            // Стреляет по базе если на одной оси
+            if (gBase.alive) {
+                float dx = fabsf(bots[i].x - gBase.x);
+                float dy = fabsf(bots[i].y - gBase.y);
+                if (dx < CELL_SIZE / 2.0f || dy < CELL_SIZE / 2.0f)
+                    bot_try_shoot(&bots[i], gBase.x, gBase.y, currentTime);
+            }
+            break;
+        case BOT_HUNTER:
+            // Стреляет по игроку если видит
+            if (bot_has_line_of_sight(&bots[i], fieldX, fieldY))
+                bot_try_shoot(&bots[i], player.x, player.y, currentTime);
+            break;
+        default:
+            // Едут к базе, но стреляют по игроку если видят
+            if (bot_has_line_of_sight(&bots[i], fieldX, fieldY))
+                bot_try_shoot(&bots[i], player.x, player.y, currentTime);
+            break;
         }
 
-        // 3. Стрельба по преградам[cite: 12]
-        int aheadI = curI + (int)bots[i].dirX;
-        int aheadJ = curJ + (int)bots[i].dirY;
-        if (aheadI >= 0 && aheadI < GRID_SIZE && aheadJ >= 0 && aheadJ < GRID_SIZE) {
-            if (map[aheadJ][aheadI] == 5 && !bots[i].b_bullet.active) {
-                if (currentTime - bots[i].b_bullet.lastShootTime >= BOT_SHOOT_DELAY) {
-                    bots[i].b_bullet.active = 1;
-                    bots[i].b_bullet.x = bots[i].x; bots[i].b_bullet.y = bots[i].y;
-                    bots[i].b_bullet.dirX = bots[i].dirX; bots[i].b_bullet.dirY = bots[i].dirY;
-                    bots[i].b_bullet.lastShootTime = currentTime;
+        // ── Таймер застревания ────────────────────────────────────────
+        if (bots[i].dirX == 0.0f && bots[i].dirY == 0.0f) {
+            if (currentTime - bots[i].stuckTimer > 1.0) {
+                bots[i].targetCellX = -1;
+                bots[i].targetCellY = -1;
+                bots[i].stuckTimer  = currentTime;
+            }
+        } else {
+            bots[i].stuckTimer = currentTime;
+        }
+
+        // ── Навигация A* ──────────────────────────────────────────────
+        int hasTarget = (bots[i].targetCellX >= 0 &&
+                         bots[i].targetCellY >= 0);
+
+        float tCX = hasTarget
+                    ? grid_to_world(bots[i].targetCellX, fieldX)
+                    : bots[i].x;
+        float tCY = hasTarget
+                    ? grid_to_world(bots[i].targetCellY, fieldY)
+                    : bots[i].y;
+
+        float distToTarget = sqrtf(
+            (bots[i].x - tCX) * (bots[i].x - tCX) +
+            (bots[i].y - tCY) * (bots[i].y - tCY));
+        int reachedTarget = hasTarget && (distToTarget < 2.0f);
+
+        if (!hasTarget || reachedTarget) {
+            // Фиксируем позицию точно по центру клетки
+            bots[i].x = grid_to_world(bi, fieldX);
+            bots[i].y = grid_to_world(bj, fieldY);
+
+            // Временно очищаем целевую клетку чтобы A* мог её достичь
+            int savedTile = map[goalJ][goalI];
+            if (savedTile != 0) map[goalJ][goalI] = 0;
+            PFPoint next = pathfind_next_step(bi, bj, goalI, goalJ, 1);
+            map[goalJ][goalI] = savedTile;
+
+            if (next.x != -1) {
+                bots[i].targetCellX = next.x;
+                bots[i].targetCellY = next.y;
+                bots[i].dirX = (float)(next.x - bi);
+                bots[i].dirY = (float)(next.y - bj);
+
+                // Фиксируем перпендикулярную ось
+                if (bots[i].dirX != 0.0f)
+                    bots[i].y = grid_to_world(bj, fieldY);
+                if (bots[i].dirY != 0.0f)
+                    bots[i].x = grid_to_world(bi, fieldX);
+
+                // Следующая клетка — дерево: стреляем и ждём
+                if (map[next.y][next.x] == 5) {
+                    bot_try_shoot(&bots[i],
+                                  grid_to_world(next.x, fieldX),
+                                  grid_to_world(next.y, fieldY),
+                                  currentTime);
+                    bots[i].dirX        = 0.0f;
+                    bots[i].dirY        = 0.0f;
+                    bots[i].targetCellX = bi;
+                    bots[i].targetCellY = bj;
                 }
+            } else {
+                bots[i].dirX        = 0.0f;
+                bots[i].dirY        = 0.0f;
+                bots[i].targetCellX = bi;
+                bots[i].targetCellY = bj;
             }
         }
 
-        // 4. Движение
-        float nx = bots[i].x + bots[i].dirX * bots[i].speed * deltaTime;
-        float ny = bots[i].y + bots[i].dirY * bots[i].speed * deltaTime;
+        // ── Движение к целевой клетке ─────────────────────────────────
+        if (bots[i].dirX != 0.0f || bots[i].dirY != 0.0f) {
+            float newX = bots[i].x + bots[i].dirX * bots[i].speed * deltaTime;
+            float newY = bots[i].y + bots[i].dirY * bots[i].speed * deltaTime;
 
-        // Проверка коллизий с запасом[cite: 12]
-        if (!check_rect_collision_with_map(COLLISION_BOT, nx, ny, BOT_SIZE - 6, BOT_SIZE - 6, (float)i, 0)) {
-            bots[i].x = nx;
-            bots[i].y = ny;
-        } else {
-            // Если уперлись в другого бота или игрока — обнуляем направление, чтобы пересчитать на след. кадре
-            bots[i].dirX = 0; bots[i].dirY = 0;
+            // Не перелетаем центр целевой клетки
+            float tcX = grid_to_world(bots[i].targetCellX, fieldX);
+            float tcY = grid_to_world(bots[i].targetCellY, fieldY);
+            if (bots[i].dirX > 0.0f && newX > tcX) newX = tcX;
+            if (bots[i].dirX < 0.0f && newX < tcX) newX = tcX;
+            if (bots[i].dirY > 0.0f && newY > tcY) newY = tcY;
+            if (bots[i].dirY < 0.0f && newY < tcY) newY = tcY;
+
+            newX = fmaxf(minXb, fminf(maxXb, newX));
+            newY = fmaxf(minYb, fminf(maxYb, newY));
+
+            if (!check_rect_collision_with_map(COLLISION_BOT,
+                    newX, newY, BOT_SIZE, BOT_SIZE, (float)i, 0)) {
+                bots[i].x = newX;
+                bots[i].y = newY;
+            }
+            // При коллизии просто стоим — stuckTimer пересчитает путь
         }
 
-        bullet_update(&bots[i].b_bullet, COLLISION_BOT_BULLET, deltaTime, fieldX, fieldY, fieldSize);
+        // ── Обновление пули ───────────────────────────────────────────
+        bullet_update(&bots[i].b_bullet, COLLISION_BOT_BULLET,
+                      deltaTime, fieldX, fieldY, fieldSize);
     }
 }

@@ -8,10 +8,13 @@ extern int fieldX, fieldY;
 
 Level levels[TOTAL_LEVELS];
 
+// Текущий индекс в очереди ботов
+int botQueueIndex     = 0;
+int currentLevelIndex = 0;
+
 void levels_init(void)
 {
     // ── Уровень 1: Открытое поле ──────────────────────────────
-    // Спавны игрока=1, ботов=6, стена=2, вода=3, листва=4, дерево=5
     int l1[GRID_SIZE][GRID_SIZE] = {
         {0,0,2,6,0,0,0,0,0,6,2,0,0},
         {0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -30,9 +33,19 @@ void levels_init(void)
     memcpy(levels[0].map, l1, sizeof(l1));
     levels[0].player_lives = 3;
     levels[0].name = "OPEN FIELD";
+    // 6 обычных ботов — по 3 с каждой точки спавна (0=лево, 1=право)
+    BotWave w1[] = {
+        {BOT_NORMAL,  0},
+        {BOT_NORMAL,  1},
+        {BOT_NORMAL,  0},
+        {BOT_NORMAL,  1},
+        {BOT_HUNTER,  0},
+        {BOT_HUNTER,  1},
+    };
+    levels[0].botCount = 6;
+    memcpy(levels[0].botQueue, w1, sizeof(w1));
 
     // ── Уровень 2: Городской бой ──────────────────────────────
-    // Много стен, узкие коридоры, больше ботов-спавнов
     int l2[GRID_SIZE][GRID_SIZE] = {
         {6,0,0,2,0,0,0,0,0,2,0,0,6},
         {0,2,0,2,0,2,2,2,0,2,0,2,0},
@@ -45,15 +58,29 @@ void levels_init(void)
         {0,2,0,0,0,4,0,4,0,0,0,2,0},
         {0,2,5,2,0,0,0,0,0,2,5,2,0},
         {0,0,0,2,0,2,0,2,0,2,0,0,0},
-        {6,0,0,0,0,0,0,0,0,0,0,0,6},
-        {0,0,0,0,0,0,1,0,0,0,0,0,0},
+        {6,0,0,0,0,5,5,5,0,0,0,0,6},
+        {0,0,0,0,1,5,0,5,0,0,0,0,0},
     };
     memcpy(levels[1].map, l2, sizeof(l2));
     levels[1].player_lives = 3;
     levels[1].name = "URBAN COMBAT";
+    // 10 ботов — mix типов, 2 точки спавна
+    BotWave w2[] = {
+        {BOT_NORMAL,  0},
+        {BOT_NORMAL,  1},
+        {BOT_HUNTER,  0},
+        {BOT_HOUND,   1},
+        {BOT_NORMAL,  0},
+        {BOT_HUNTER,  1},
+        {BOT_HOUND,   0},
+        {BOT_ARMORED, 1},
+        {BOT_HUNTER,  0},
+        {BOT_ARMORED, 1},
+    };
+    levels[1].botCount = 10;
+    memcpy(levels[1].botQueue, w2, sizeof(w2));
 
     // ── Уровень 3: Крепость ───────────────────────────────────
-    // Закрытая карта, боты спавнятся по углам, много препятствий
     int l3[GRID_SIZE][GRID_SIZE] = {
         {6,2,2,2,2,2,2,2,2,2,2,2,6},
         {2,0,0,0,0,5,0,5,0,0,0,0,2},
@@ -70,12 +97,34 @@ void levels_init(void)
         {6,2,2,2,2,2,1,2,2,2,2,2,6},
     };
     memcpy(levels[2].map, l3, sizeof(l3));
-    levels[2].player_lives = 5; // больше жизней — карта сложнее
+    levels[2].player_lives = 5;
     levels[2].name = "FORTRESS";
+    // 14 ботов — тяжёлый состав, 2 точки спавна по углам
+    BotWave w3[] = {
+        {BOT_HOUND,   0},
+        {BOT_HOUND,   1},
+        {BOT_HUNTER,  0},
+        {BOT_HUNTER,  1},
+        {BOT_ARMORED, 0},
+        {BOT_NORMAL,  1},
+        {BOT_HOUND,   0},
+        {BOT_HUNTER,  1},
+        {BOT_ARMORED, 0},
+        {BOT_ARMORED, 1},
+        {BOT_HOUND,   0},
+        {BOT_HUNTER,  1},
+        {BOT_ARMORED, 0},
+        {BOT_ARMORED, 1},
+    };
+    levels[2].botCount = 14;
+    memcpy(levels[2].botQueue, w3, sizeof(w3));
 }
 
 void load_level(int index)
 {
+    currentLevelIndex = index;
+    botQueueIndex     = 0;
+
     memcpy(map, levels[index].map, sizeof(int) * GRID_SIZE * GRID_SIZE);
 
     // ── Спавн игрока ──
@@ -94,23 +143,25 @@ void load_level(int index)
         sp_player.y = fieldY + FIELD_SIZE / 2.0f;
     }
 
-    player.x              = sp_player.x;
-    player.y              = sp_player.y;
-    player.dead           = 0;
-    player.lives          = levels[index].player_lives;
+    player.x               = sp_player.x;
+    player.y               = sp_player.y;
+    player.dead            = 0;
+    player.lives           = levels[index].player_lives;
     player.invincibleTimer = 0.0f;
     player.p_bullet.active = 0;
-    player.p_bullet.dirX  = 0.0f;
-    player.p_bullet.dirY  = -1.0f;
+    player.p_bullet.dirX   = 0.0f;
+    player.p_bullet.dirY   = -1.0f;
     player.p_bullet.lastShootTime = 0.0;
 
-    // ── Спавны ботов ──
+    // ── Спавны ботов (из карты по порядку) ──
     int spawn_count = 0;
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 6) {
-                sp_bots[spawn_count].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                sp_bots[spawn_count].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
+                sp_bots[spawn_count].x =
+                    fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
+                sp_bots[spawn_count].y =
+                    fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
                 spawn_count++;
             }
         }
@@ -118,23 +169,38 @@ void load_level(int index)
 
     // ── Сброс ботов ──
     for (int i = 0; i < MAX_BOTS; i++) {
-        bots[i].active         = 0;
-        bots[i].deathTime      = 0;
+        bots[i].active          = 0;
+        bots[i].deathTime       = 0;
         bots[i].b_bullet.active = 0;
+        bots[i].targetCellX     = -1;
+        bots[i].targetCellY     = -1;
     }
 
     // ── Инициализация деревьев ──
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 5) {
-                woods[j][i].width      = CELL_SIZE;
-                woods[j][i].height     = CELL_SIZE;
-                woods[j][i].uv_u = 0.0f;
-                woods[j][i].uv_v = 0.0f;
+                woods[j][i].width  = CELL_SIZE;
+                woods[j][i].height = CELL_SIZE;
+                woods[j][i].uv_u   = 0.0f;
+                woods[j][i].uv_v   = 0.0f;
                 woods[j][i].x = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
                 woods[j][i].y = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
             }
         }
     }
+
     base_init(fieldX, fieldY);
+}
+
+int level_is_complete(void)
+{
+    // Все боты из очереди заспавнены
+    if (botQueueIndex < levels[currentLevelIndex].botCount) return 0;
+
+    // И нет активных ботов на поле
+    for (int i = 0; i < MAX_BOTS; i++)
+        if (bots[i].active) return 0;
+
+    return 1;
 }

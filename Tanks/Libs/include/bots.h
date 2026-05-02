@@ -8,13 +8,13 @@
 #define BOT_SPAWN_INTERVAL 4.0f
 #define BOT_ROTATE_INTERVAL 0.5f
 #define BOT_SIZE           58
-#define BOT_SHOOT_DELAY    2.0f
+#define BOT_SHOOT_DELAY    1.0f
 
 // Скорости по типу
-#define BOT_SPEED_NORMAL   175.0f
-#define BOT_SPEED_HOUND    280.0f
-#define BOT_SPEED_HUNTER   175.0f
-#define BOT_SPEED_ARMORED  150.0f
+#define BOT_SPEED_NORMAL   150.0f
+#define BOT_SPEED_HOUND    200.0f
+#define BOT_SPEED_HUNTER   150.0f
+#define BOT_SPEED_ARMORED  120.0f
 
 // Типы ботов
 typedef enum {
@@ -34,9 +34,12 @@ typedef struct {
     float    speed;
     int      active;
     float    invincibleTimer;
+    double stuckTimer;
     BotType  type;
     int      hp;
     int      flashTimer;
+    int      targetCellX;
+    int      targetCellY;
 } Bot;
 
 // База
@@ -50,6 +53,9 @@ typedef struct {
 extern Bot  bots[MAX_BOTS];
 extern Base gBase;
 extern Spawner sp_bots[];
+
+int level_spawn_next(Spawner* spawnPoints, int spawnCount,
+                     double currentTime);
 
 void bots_update(float deltaTime, double currentTime,
                  int fieldX, int fieldY, int fieldSize,

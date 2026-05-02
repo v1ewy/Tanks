@@ -573,10 +573,7 @@ int main(void)
                         fieldX, fieldY, FIELD_SIZE,
                         sp_bots, spawn_count);
 
-            int anyBot = 0;
-            for (int i = 0; i < MAX_BOTS; i++)
-                if (bots[i].active) anyBot = 1;
-            if (!anyBot && spawn_count == 0) {
+            if (level_is_complete()) {
                 gameState        = GAME_STATE_MENU;
                 selectedMenuItem = 0;
             }
