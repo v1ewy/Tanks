@@ -7,7 +7,7 @@
 #define PLAYER_SIZE 56
 #define PLAYER_SPEED 175.0f
 #define PLAYER_SHOOT_DELAY 0.4f
-#define INVINCIBLE_DURATION 2.0f
+#define INVINCIBLE_DURATION 1.0f
 
 typedef struct {
     Bullet p_bullet;

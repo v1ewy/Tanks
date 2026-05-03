@@ -5,7 +5,7 @@
 #include "player.h"
 
 #define MAX_BOTS           8
-#define BOT_SPAWN_INTERVAL 4.0f
+#define BOT_SPAWN_INTERVAL 3.0f
 #define BOT_ROTATE_INTERVAL 0.5f
 #define BOT_SIZE           58
 #define BOT_SHOOT_DELAY    1.0f

@@ -18,7 +18,7 @@ void levels_init(void)
 {
     // ── Уровень 1: Открытое поле ──────────────────────────────
     int l1[GRID_SIZE][GRID_SIZE] = {
-        {0,0,2,6,0,0,0,0,0,6,2,0,0},
+        {0,6,2,0,0,0,6,0,0,0,2,6,0},
         {0,0,0,0,0,0,0,0,0,0,0,0,0},
         {0,0,0,0,0,0,0,0,0,0,0,0,0},
         {4,4,4,4,0,3,3,3,0,4,4,4,4},
@@ -35,13 +35,19 @@ void levels_init(void)
     memcpy(levels[0].map, l1, sizeof(l1));
     levels[0].player_lives = 3;
     levels[0].name         = "OPEN FIELD";
-    levels[0].botCount     = 6;
+    levels[0].botCount     = 12;
     BotWave w1[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
+        {BOT_NORMAL,  2},
+        {BOT_NORMAL,  1},
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
+        {BOT_NORMAL,  2},
+        {BOT_NORMAL,  1},
         {BOT_HUNTER,  0},
+        {BOT_HUNTER,  1},
+        {BOT_HUNTER,  2},
         {BOT_HUNTER,  1},
     };
     memcpy(levels[0].botQueue, w1, sizeof(w1));

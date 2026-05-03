@@ -24,7 +24,7 @@ static float tile_cost(int x, int y, int canBreakWood)
     int t = map[y][x];
     if (t == 2) return 1e9f;   // стена
     if (t == 3) return 1e9f;   // вода
-    if (t == 5) return canBreakWood ? 5.0f : 1e9f; // дерево
+    if (t == 5) return canBreakWood ? 10.0f : 1e9f; // дерево
     if (t == 4) return 1.0f;   // листва — проходима как пустота ← уже должно быть так
     return 1.0f;
 }
@@ -34,7 +34,6 @@ static float heuristic(int x, int y, int gx, int gy)
     return (float)(abs(x - gx) + abs(y - gy)); // Манхэттен
 }
 
-// pathfinding.c
 
 PFPoint pathfind_next_step(int fromX, int fromY,
                             int toX,   int toY,
