@@ -3,6 +3,9 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <menu.h>
+#include "levels.h"
+#include "render.h"
+#include "score.h"
 
 extern void render_text(const char*, float, float, float, float, float, float);
 extern int  windowWidth, windowHeight;
@@ -102,4 +105,106 @@ void render_death_menu(void)
 
     render_text("W/S - Navigate     SPACE - Select",
                 cx - 280, cy + 220, 0.7f, 0.5f, 0.5f, 0.5f);
+}
+
+void render_victory_screen(void)
+{
+    extern int    gScore;
+    extern int    gTimeBonusAwarded;
+    extern int    gKills[4];
+    extern int    currentLevelIndex;
+    extern Level  levels[];
+
+    float cx = windowWidth  / 2.0f;
+    float cy = windowHeight / 2.0f;
+
+    render_text("MISSION COMPLETE",
+                cx - 310, cy - 400, 2.0f, 0.2f, 1.0f, 0.2f);
+
+    // Считаем сколько ботов каждого типа было на уровне
+    Level* lvl = &levels[currentLevelIndex];
+    int totalByType[4] = {0, 0, 0, 0};
+    for (int i = 0; i < lvl->botCount; i++)
+        totalByType[lvl->botQueue[i].type]++;
+
+    // Данные по каждому типу
+    const char* names[]  = { "NORMAL",  "HOUND",  "HUNTER", "ARMORED" };
+    int points[] = { SCORE_NORMAL, SCORE_HOUND, SCORE_HUNTER, SCORE_ARMORED };
+
+    // Цвета активного (убитого) типа
+    float colActive[4][4] = {
+        {0.75f, 0.75f, 0.75f, 1.0f}, // обычный  — светло-серый
+        {1.0f,  1.0f,  0.0f,  1.0f}, // гончая   — жёлтый
+        {1.0f,  0.0f,  0.0f,  1.0f}, // охотник  — красный
+        {1.0f,  0.5f,  0.0f,  1.0f}, // бронник  — оранжевый
+    };
+    // Цвет неубитого типа — тёмно-серый
+    float colDead[4] = {0.25f, 0.25f, 0.25f, 1.0f};
+
+    float rowY = cy - 280.0f; // ← подняли выше (было -160)
+    float rectW = 40.0f, rectH = 40.0f;
+
+    for (int t = 0; t < 4; t++) {
+        int killed = gKills[t];
+        int total  = totalByType[t];
+        int score  = killed * points[t];
+
+        float iconX = cx - 350.0f;
+        float* col  = (killed > 0) ? colActive[t] : colDead;
+        float nr = col[0], ng = col[1], nb = col[2];
+
+        // Иконка
+        draw_rect(iconX, rowY + 15.0f, rectW, rectH, col);
+
+        // Название — правее иконки
+        render_text(names[t],
+                    iconX + rectW + 15.0f,
+                    rowY,
+                    1.0f, nr, ng, nb);
+
+        // Счёт — на отдельной строке, смещён вниз на 40px
+        char line[64];
+        sprintf(line, "%d/%d  x%d = %d pts", killed, total, points[t], score);
+        render_text(line,
+                    iconX + rectW + 15.0f,
+                    rowY + 45.0f,
+                    0.85f, nr, ng, nb);
+
+        rowY += 100.0f; // ← увеличили шаг между типами (было 90)
+    }
+
+    // Разделитель
+    rowY += 10.0f;
+
+    // Бонус за скорость
+    if (gTimeBonusAwarded > 0) {
+        char txt[64];
+        sprintf(txt, "SPEED BONUS:  +%d", gTimeBonusAwarded);
+        render_text(txt, cx - 300, rowY, 1.0f, 0.2f, 1.0f, 0.8f);
+        rowY += 60.0f;
+    }
+
+    // Итог
+    char txt[64];
+    sprintf(txt, "TOTAL SCORE:  %d", gScore);
+    render_text(txt, cx - 300, rowY, 1.3f, 1.0f, 1.0f, 0.2f);
+    
+    extern double victoryTimer;
+    if (glfwGetTime() - victoryTimer < 2.0) {
+        render_text("...", cx - 20, rowY + 100.0f, 1.5f, 0.5f, 0.5f, 0.5f);
+        return;
+    }
+
+    // Меню
+    const char* items[] = { "NEXT LEVEL", "MAIN MENU" };
+    for (int i = 0; i < 2; i++) {
+        float y  = rowY + 80.0f + i * 70.0f;
+        float br = (selectedMenuItem == i) ? 1.0f : 0.5f;
+        if (selectedMenuItem == i)
+            render_text(">", cx - 340, y, 1.2f, 1.0f, 1.0f, 1.0f);
+        render_text(items[i], cx - 300, y, 1.2f, br, br, br);
+    }
+
+    render_text("W/S - Navigate     SPACE - Select",
+                cx - 280, rowY + 240.0f, 0.7f, 0.5f, 0.5f, 0.5f);
 }

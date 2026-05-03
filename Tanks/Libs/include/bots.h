@@ -54,9 +54,6 @@ extern Bot  bots[MAX_BOTS];
 extern Base gBase;
 extern Spawner sp_bots[];
 
-int level_spawn_next(Spawner* spawnPoints, int spawnCount,
-                     double currentTime);
-
 void bots_update(float deltaTime, double currentTime,
                  int fieldX, int fieldY, int fieldSize,
                  Spawner* spawnPoints, int spawnCount);

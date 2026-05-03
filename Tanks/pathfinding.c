@@ -22,12 +22,11 @@ static float tile_cost(int x, int y, int canBreakWood)
         return 1e9f;
 
     int t = map[y][x];
-    if (t == 2) return 1e9f;          // стена — непроходима
-    if (t == 3) return 1e9f;          // вода — непроходима
-    if (t == 5) return canBreakWood
-                       ? 5.0f         // дерево — дорого но можно
-                       : 1e9f;        // без возможности ломать — нельзя
-    return 1.0f;                      // пусто, трава, листва
+    if (t == 2) return 1e9f;   // стена
+    if (t == 3) return 1e9f;   // вода
+    if (t == 5) return canBreakWood ? 5.0f : 1e9f; // дерево
+    if (t == 4) return 1.0f;   // листва — проходима как пустота ← уже должно быть так
+    return 1.0f;
 }
 
 static float heuristic(int x, int y, int gx, int gy)

@@ -16,6 +16,7 @@ void player_update(void* window, float deltaTime, double currentTime,
                    int fieldX, int fieldY, int fieldSize)
 {
     GLFWwindow* win = (GLFWwindow*)window;
+    gPlayerMoving = 0;
 
     if (!player.dead) {
         // --- Движение ---
@@ -85,23 +86,4 @@ void player_update(void* window, float deltaTime, double currentTime,
     // --- Обновление пули ---
     bullet_update(&player.p_bullet, COLLISION_PLAYER_BULLET,
                   deltaTime, fieldX, fieldY, fieldSize);
-}
-
-void player_draw(void (*draw_rect)(float, float, float, float, float*))
-{
-    if (player.dead) return;
-
-    // Мигание при неуязвимости
-    if (player.invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1) return;
-
-    float color[4] = { 0.0f, 1.0f, 0.0f, 1.0f }; // зелёный
-    draw_rect(player.x, player.y, PLAYER_SIZE, PLAYER_SIZE, color);
-
-    // Пуля
-    if (player.p_bullet.active) {
-        float w = (player.p_bullet.dirX != 0) ? BULLET_WIDTH  : BULLET_HEIGHT;
-        float h = (player.p_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;
-        float wc[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-        draw_rect(player.p_bullet.x, player.p_bullet.y, w, h, wc);
-    }
 }

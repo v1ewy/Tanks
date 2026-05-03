@@ -19,6 +19,7 @@
 #include <menu.h>
 #include <levels.h>
 #include <texture.h>
+#include <score.h>
 
 // ─────────────────────────────────────────────
 //  Константы окна и поля
@@ -35,7 +36,8 @@ typedef enum {
     GAME_STATE_MENU,
     GAME_STATE_LEVEL_SELECT,
     GAME_STATE_PLAYING,
-    GAME_STATE_GAME_OVER
+    GAME_STATE_GAME_OVER,
+    GAME_STATE_VICTORY
 } GameState;
 
 // ─────────────────────────────────────────────
@@ -57,6 +59,8 @@ int total_levels         = TOTAL_LEVELS;
 
 double gameOverTimer        = 0.0;
 int    gameOverMessageIndex = 0;
+int gTimeBonusAwarded = 0;
+double victoryTimer = 0.0;
 
 const char* gameOverMessages[] = {
     "КАПИТАН УБИТ",
@@ -556,6 +560,49 @@ int main(void)
                 }
             }
         }
+        
+        else if (gameState == GAME_STATE_VICTORY) {
+            double timePassed = currentTime - victoryTimer;
+
+            if (timePassed < 5.0) {
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
+                    currentTime - lastKeyTime > keyDelay) {
+                    victoryTimer = currentTime - 4.0; //
+                    lastKeyTime   = currentTime;
+                }
+            }
+            else {
+                
+                if (currentTime - lastKeyTime > keyDelay) {
+                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                        lastKeyTime = currentTime;
+                    } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem + 1) % 2;
+                        lastKeyTime = currentTime;
+                    } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                        if (selectedMenuItem == 0) {
+                            // Следующий уровень
+                            int next = selectedLevel + 1;
+                            if (next < total_levels) {
+                                selectedLevel = next;
+                                load_level(selectedLevel);
+                                gameState = GAME_STATE_PLAYING;
+                                once      = 0;
+                            } else {
+                                // Все уровни пройдены
+                                gameState        = GAME_STATE_MENU;
+                                selectedMenuItem = 0;
+                            }
+                        } else {
+                            gameState        = GAME_STATE_MENU;
+                            selectedMenuItem = 0;
+                        }
+                        lastKeyTime = currentTime;
+                    }
+                }
+            }
+        }
 
         // ── Игровая логика ──
         else if (gameState == GAME_STATE_PLAYING) {
@@ -574,7 +621,10 @@ int main(void)
                         sp_bots, spawn_count);
 
             if (level_is_complete()) {
-                gameState        = GAME_STATE_MENU;
+                double elapsed = glfwGetTime() - gLevelStartTime;
+                gTimeBonusAwarded = score_time_bonus(selectedLevel, elapsed);
+                victoryTimer     = glfwGetTime();
+                gameState        = GAME_STATE_VICTORY;
                 selectedMenuItem = 0;
             }
             // Победа ботов — база уничтожена
@@ -621,6 +671,9 @@ int main(void)
         }
         else if (gameState == GAME_STATE_LEVEL_SELECT) {
             render_level_select();
+        }
+        else if (gameState == GAME_STATE_VICTORY) {
+            render_victory_screen();
         }
         else if (gameState == GAME_STATE_GAME_OVER) {
             if (glfwGetTime() - gameOverTimer >= 4.0)

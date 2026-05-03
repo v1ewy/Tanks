@@ -45,5 +45,5 @@ void textures_load(void)
     gTextures.bullet = load_texture("Tanks/Assets/Image/Bullet.png");
     gTextures.wall   = load_texture("Tanks/Assets/Image/Wall.png");
     gTextures.water  = load_texture("Tanks/Assets/Image/Water.png");
-    gTextures.wood   = load_texture("Tanks/Assets/Image/Wood1.png");
+    gTextures.wood   = load_texture("Tanks/Assets/Image/Wood.png");
 }

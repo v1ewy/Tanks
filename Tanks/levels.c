@@ -1,14 +1,16 @@
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #include <string.h>
 #include <map.h>
 #include <levels.h>
 #include <player.h>
 #include <bots.h>
+#include <score.h>
 
 extern int fieldX, fieldY;
 
 Level levels[TOTAL_LEVELS];
 
-// Текущий индекс в очереди ботов
 int botQueueIndex     = 0;
 int currentLevelIndex = 0;
 
@@ -32,8 +34,8 @@ void levels_init(void)
     };
     memcpy(levels[0].map, l1, sizeof(l1));
     levels[0].player_lives = 3;
-    levels[0].name = "OPEN FIELD";
-    // 6 обычных ботов — по 3 с каждой точки спавна (0=лево, 1=право)
+    levels[0].name         = "OPEN FIELD";
+    levels[0].botCount     = 6;
     BotWave w1[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -42,7 +44,6 @@ void levels_init(void)
         {BOT_HUNTER,  0},
         {BOT_HUNTER,  1},
     };
-    levels[0].botCount = 6;
     memcpy(levels[0].botQueue, w1, sizeof(w1));
 
     // ── Уровень 2: Городской бой ──────────────────────────────
@@ -63,8 +64,8 @@ void levels_init(void)
     };
     memcpy(levels[1].map, l2, sizeof(l2));
     levels[1].player_lives = 3;
-    levels[1].name = "URBAN COMBAT";
-    // 10 ботов — mix типов, 2 точки спавна
+    levels[1].name         = "URBAN COMBAT";
+    levels[1].botCount     = 10;
     BotWave w2[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -77,7 +78,6 @@ void levels_init(void)
         {BOT_HUNTER,  0},
         {BOT_ARMORED, 1},
     };
-    levels[1].botCount = 10;
     memcpy(levels[1].botQueue, w2, sizeof(w2));
 
     // ── Уровень 3: Крепость ───────────────────────────────────
@@ -98,8 +98,8 @@ void levels_init(void)
     };
     memcpy(levels[2].map, l3, sizeof(l3));
     levels[2].player_lives = 5;
-    levels[2].name = "FORTRESS";
-    // 14 ботов — тяжёлый состав, 2 точки спавна по углам
+    levels[2].name         = "FORTRESS";
+    levels[2].botCount     = 14;
     BotWave w3[] = {
         {BOT_HOUND,   0},
         {BOT_HOUND,   1},
@@ -116,7 +116,6 @@ void levels_init(void)
         {BOT_ARMORED, 0},
         {BOT_ARMORED, 1},
     };
-    levels[2].botCount = 14;
     memcpy(levels[2].botQueue, w3, sizeof(w3));
 }
 
@@ -127,7 +126,7 @@ void load_level(int index)
 
     memcpy(map, levels[index].map, sizeof(int) * GRID_SIZE * GRID_SIZE);
 
-    // ── Спавн игрока ──
+    // ── Спавн игрока ──────────────────────────────────────────
     int found = 0;
     for (int j = 0; j < GRID_SIZE && !found; j++) {
         for (int i = 0; i < GRID_SIZE && !found; i++) {
@@ -147,13 +146,13 @@ void load_level(int index)
     player.y               = sp_player.y;
     player.dead            = 0;
     player.lives           = levels[index].player_lives;
-    player.invincibleTimer = 0.0f;
+    player.invincibleTimer = INVINCIBLE_DURATION; // неуязвим при спавне
     player.p_bullet.active = 0;
     player.p_bullet.dirX   = 0.0f;
     player.p_bullet.dirY   = -1.0f;
     player.p_bullet.lastShootTime = 0.0;
 
-    // ── Спавны ботов (из карты по порядку) ──
+    // ── Спавны ботов из карты ─────────────────────────────────
     int spawn_count = 0;
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
@@ -167,16 +166,19 @@ void load_level(int index)
         }
     }
 
-    // ── Сброс ботов ──
+    // ── Сброс ботов ───────────────────────────────────────────
     for (int i = 0; i < MAX_BOTS; i++) {
         bots[i].active          = 0;
         bots[i].deathTime       = 0;
         bots[i].b_bullet.active = 0;
         bots[i].targetCellX     = -1;
         bots[i].targetCellY     = -1;
+        bots[i].hp              = 1;
+        bots[i].invincibleTimer = 0.0f;
+        bots[i].flashTimer      = 0;
     }
 
-    // ── Инициализация деревьев ──
+    // ── Инициализация деревьев ────────────────────────────────
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 5) {
@@ -190,15 +192,21 @@ void load_level(int index)
         }
     }
 
+    // ── База ─────────────────────────────────────────────────
     base_init(fieldX, fieldY);
+
+    // ── Очки и таймер ────────────────────────────────────────
+    score_reset();
+    gLevelStartTime = glfwGetTime();
 }
 
+// levels.c
 int level_is_complete(void)
 {
-    // Все боты из очереди заспавнены
+    if (botQueueIndex == 0) return 0;
+
     if (botQueueIndex < levels[currentLevelIndex].botCount) return 0;
 
-    // И нет активных ботов на поле
     for (int i = 0; i < MAX_BOTS; i++)
         if (bots[i].active) return 0;
 

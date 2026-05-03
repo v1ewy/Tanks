@@ -50,7 +50,7 @@ void draw_rect(float x, float y, float w, float h, float* color)
 void draw_textured_rect(float x, float y, float w, float h, GLuint textureID)
 {
     float model[16] = {0};
-    model[0]=w; model[5]=h; model[10]=1.0f; model[15]=1.0f;
+    model[0]=h; model[5]=w; model[10]=1.0f; model[15]=1.0f;
     model[12]=x; model[13]=y;
 
     glUseProgram(gRender.texShaderProgram);
@@ -156,12 +156,12 @@ void render_map(void) {
 
             switch (map[j][i]) {
                 case 2: // стена
-                    draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                       gTextures.wall);
+                    render_rotated_uv(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                       gTextures.wall, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
                     break;
                 case 3: // вода
-                    draw_textured_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
-                                       gTextures.water);
+                    render_rotated_uv(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                       gTextures.water, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
                     break;
                 case 5:
                     if (woods[j][i].width > 0 && woods[j][i].height > 0) {
@@ -232,20 +232,19 @@ void render_player(void)
         gPlayerAnimFrame = 0;
     }
 
+    // Мигание при неуязвимости — пропускаем отрисовку
     if (player.invincibleTimer > 0.0f && fmod(now, 0.2) > 0.1)
-        goto draw_player_bullet;
+        goto draw_bullet; // ← пропускаем тело, но рисуем пулю
 
     {
         float u0 = (float) gPlayerAnimFrame      / 4.0f;
         float u1 = (float)(gPlayerAnimFrame + 1) / 4.0f;
 
-        // Угол поворота по направлению движения
-        // Спрайт по умолчанию смотрит ВПРАВО
         float angle = 0.0f;
-        if      (gPlayerDirX >  0) angle = 3.14159f / 2.0f;               // вправо
-        else if (gPlayerDirX <  0) angle =  -3.14159f / 2.0f;            // влево
-        else if (gPlayerDirY <  0) angle = 0.0f;     // вверх
-        else if (gPlayerDirY >  0) angle =  3.14159f;     // вниз
+        if      (gPlayerDirX >  0) angle =  3.14159f / 2.0f;
+        else if (gPlayerDirX <  0) angle = -3.14159f / 2.0f;
+        else if (gPlayerDirY <  0) angle =  0.0f;
+        else if (gPlayerDirY >  0) angle =  3.14159f;
 
         render_rotated_uv(player.x, player.y,
                           PLAYER_SIZE, PLAYER_SIZE,
@@ -254,7 +253,7 @@ void render_player(void)
                           angle);
     }
 
-draw_player_bullet:
+draw_bullet:
     if (player.p_bullet.active) {
         float w = (player.p_bullet.dirX != 0) ? BULLET_WIDTH  : BULLET_HEIGHT;
         float h = (player.p_bullet.dirX != 0) ? BULLET_HEIGHT : BULLET_WIDTH;

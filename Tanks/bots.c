@@ -54,29 +54,56 @@ static float grid_to_world(int cell, int fieldOrigin)
     return fieldOrigin + cell * CELL_SIZE + CELL_SIZE / 2.0f;
 }
 
-// Прямая видимость игрока по горизонтали или вертикали
-static int bot_has_line_of_sight(Bot* b, int fieldX, int fieldY)
+// Возвращает направление выстрела (sdx, sdy) или 0,0 если не выровнен
+static int bot_aligned_with_player(Bot* b, float* sdx, float* sdy)
+{
+    float dx = player.x - b->x;
+    float dy = player.y - b->y;
+
+    float halfBullet = BULLET_HEIGHT / 2.0f; // узкая сторона пули
+
+    if (fabsf(dx) > fabsf(dy)) {
+        // Игрок по горизонтали — стреляем по X
+        // Проверяем что центры выровнены по Y с учётом полуширины пули
+        if (fabsf(dy) <= halfBullet) {
+            *sdx = (dx > 0) ? 1.0f : -1.0f;
+            *sdy = 0.0f;
+            return 1;
+        }
+    } else {
+        // Игрок по вертикали — стреляем по Y
+        // Проверяем что центры выровнены по X с учётом полуширины пули
+        if (fabsf(dx) <= halfBullet) {
+            *sdx = 0.0f;
+            *sdy = (dy > 0) ? 1.0f : -1.0f;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Проверяет прямую видимость по прямой между ботом и игроком
+static int bot_has_clear_shot(Bot* b, float sdx, float sdy, int fieldX, int fieldY)
 {
     int bi = world_to_grid(b->x, fieldX);
     int bj = world_to_grid(b->y, fieldY);
     int pi = world_to_grid(player.x, fieldX);
     int pj = world_to_grid(player.y, fieldY);
 
-    if (bi != pi && bj != pj) return 0;
-
-    if (bi == pi) {
-        int minJ = (bj < pj) ? bj : pj;
-        int maxJ = (bj > pj) ? bj : pj;
-        for (int j = minJ + 1; j < maxJ; j++)
-            if (map[j][bi] == 2 || map[j][bi] == 3) return 0;
-        return 1;
-    } else {
+    if (sdx != 0) {
+        // Горизонтальный выстрел — проверяем клетки по X
         int minI = (bi < pi) ? bi : pi;
         int maxI = (bi > pi) ? bi : pi;
         for (int i = minI + 1; i < maxI; i++)
             if (map[bj][i] == 2 || map[bj][i] == 3) return 0;
-        return 1;
+    } else {
+        // Вертикальный выстрел — проверяем клетки по Y
+        int minJ = (bj < pj) ? bj : pj;
+        int maxJ = (bj > pj) ? bj : pj;
+        for (int j = minJ + 1; j < maxJ; j++)
+            if (map[j][bi] == 2 || map[j][bi] == 3) return 0;
     }
+    return 1;
 }
 
 static void bot_try_shoot(Bot* b, float tx, float ty, double currentTime)
@@ -208,25 +235,28 @@ void bots_update(float deltaTime, double currentTime,
             break;
         }
 
-        // ── Стрельба по типу ──────────────────────────────────────────
+        // ── Стрельба по типу ──────────────────────────────────────────────
+        float shotDirX = 0.0f, shotDirY = 0.0f;
+
         switch (bots[i].type) {
         case BOT_HOUND:
-            // Стреляет по базе если на одной оси
             if (gBase.alive) {
                 float dx = fabsf(bots[i].x - gBase.x);
                 float dy = fabsf(bots[i].y - gBase.y);
-                if (dx < CELL_SIZE / 2.0f || dy < CELL_SIZE / 2.0f)
+                if (dx < BULLET_HEIGHT / 2.0f || dy < BULLET_HEIGHT / 2.0f)
                     bot_try_shoot(&bots[i], gBase.x, gBase.y, currentTime);
             }
             break;
+
         case BOT_HUNTER:
-            // Стреляет по игроку если видит
-            if (bot_has_line_of_sight(&bots[i], fieldX, fieldY))
+            if (bot_aligned_with_player(&bots[i], &shotDirX, &shotDirY) &&
+                bot_has_clear_shot(&bots[i], shotDirX, shotDirY, fieldX, fieldY))
                 bot_try_shoot(&bots[i], player.x, player.y, currentTime);
             break;
-        default:
-            // Едут к базе, но стреляют по игроку если видят
-            if (bot_has_line_of_sight(&bots[i], fieldX, fieldY))
+
+        default: // BOT_NORMAL, BOT_ARMORED
+            if (bot_aligned_with_player(&bots[i], &shotDirX, &shotDirY) &&
+                bot_has_clear_shot(&bots[i], shotDirX, shotDirY, fieldX, fieldY))
                 bot_try_shoot(&bots[i], player.x, player.y, currentTime);
             break;
         }
