@@ -43,7 +43,8 @@ void textures_load(void)
     gTextures.player = load_texture("Tanks/Assets/Image/Player.png");
     gTextures.bot    = load_texture("Tanks/Assets/Image/Wall.png");   // пока бот = wall цвет
     gTextures.bullet = load_texture("Tanks/Assets/Image/Bullet.png");
-    gTextures.wall   = load_texture("Tanks/Assets/Image/Wall.png");
+    gTextures.wall   = load_texture("Tanks/Assets/Image/Base.png");
     gTextures.water  = load_texture("Tanks/Assets/Image/Water.png");
     gTextures.wood   = load_texture("Tanks/Assets/Image/Wood.png");
+    gTextures.foliage   = load_texture("Tanks/Assets/Image/Foliage.png");
 }

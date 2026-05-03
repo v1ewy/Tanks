@@ -207,9 +207,8 @@ void render_foliage(void) {
             if (map[j][i] == 4) {
                 float cx = fieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
                 float cy = fieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                // Листва пока цветом (текстуры нет)
-                float dg[4] = {0.0f, 0.55f, 0.0f, 0.75f};
-                draw_rect(cx, cy, BLOCK_SIZE, BLOCK_SIZE, dg);
+                render_rotated_uv(cx, cy, BLOCK_SIZE, BLOCK_SIZE,
+                                   gTextures.foliage, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
             }
         }
     }

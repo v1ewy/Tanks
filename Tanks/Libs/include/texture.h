@@ -10,6 +10,7 @@ typedef struct {
     GLuint wall;
     GLuint water;
     GLuint wood;
+    GLint foliage;
 } Textures;
 
 extern Textures gTextures;
