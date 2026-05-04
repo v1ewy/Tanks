@@ -10,6 +10,7 @@
 #include <map.h>
 #include <pathfinding.h>
 #include <levels.h>
+#include "sound.h"
 
 Bot     bots[MAX_BOTS];
 Base    gBase;
@@ -124,6 +125,7 @@ static void bot_try_shoot(Bot* b, float tx, float ty, double currentTime)
     b->b_bullet.x             = b->x + sdx * BOT_SIZE / 2.0f;
     b->b_bullet.y             = b->y + sdy * BOT_SIZE / 2.0f;
     b->b_bullet.lastShootTime = currentTime;
+    sound_play("bot_shoot");
 }
 
 // ── Спавн одного бота из очереди уровня ──────────────────────────────

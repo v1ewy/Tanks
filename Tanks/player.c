@@ -5,6 +5,7 @@
 
 #include <player.h>
 #include <collision.h>
+#include "sound.h"
 
 Player  player;
 Spawner sp_player;
@@ -73,6 +74,7 @@ void player_update(void* window, float deltaTime, double currentTime,
                     player.p_bullet.y = player.y + player.p_bullet.dirY * PLAYER_SIZE / 2.0f;
                 }
                 player.p_bullet.lastShootTime = currentTime;
+                sound_play("player_shoot");
             }
         }
     }

@@ -24,10 +24,6 @@ void sound_init(void) {
     printf("Звуковой движок готов\n");
 }
 
-void sound_load_all(void) {
-    printf("Звуки будут загружены при первом воспроизведении\n");
-}
-
 void sound_play(const char* name) {
     char path[256];
     snprintf(path, sizeof(path), "Assets/Audio/%s.wav", name);

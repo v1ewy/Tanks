@@ -8,6 +8,7 @@
 #include <bots.h>
 #include <map.h>
 #include <score.h>
+#include "sound.h"
 
 static int _is_wall(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return 1;
@@ -87,8 +88,10 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                             if (bulletDirY < 0)
                                 woods[j][i].uv_v += 16.0f / 64.0f;
                         }
-                        if (woods[j][i].width <= 0 || woods[j][i].height <= 0)
+                        if (woods[j][i].width <= 0 || woods[j][i].height <= 0) {
                             map[j][i] = 0;
+                            sound_play("wood_break");
+                        }
                         return 1;
                     }
                     break;
@@ -119,8 +122,10 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                                 score_add_kill(bots[k].type);
                                 bots[k].active    = 0;
                                 bots[k].deathTime = glfwGetTime();
+                                sound_play("bot_destroy");
                             } else {
                                 bots[k].invincibleTimer = 0.5f;
+                                sound_play("hit_armor");
                             }
                             return 1;
                         }
@@ -143,8 +148,10 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                             woods[j][i].height -= 16;
                             woods[j][i].y      += bulletDirY * 8.0f;
                         }
-                        if (woods[j][i].width <= 0 || woods[j][i].height <= 0)
+                        if (woods[j][i].width <= 0 || woods[j][i].height <= 0) {
                             map[j][i] = 0;
+                            sound_play("wood_break");
+                        }
                         return 1;
                     }
                     break;
@@ -170,6 +177,7 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                         player.lives--;
                         if (player.lives <= 0) {
                             player.dead = 1;
+                            sound_play("player_death");
                         } else {
                             player.x = sp_player.x;
                             player.y = sp_player.y;

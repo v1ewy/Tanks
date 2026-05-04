@@ -630,6 +630,7 @@ int main(void)
                 victoryTimer     = glfwGetTime();
                 gameState        = GAME_STATE_VICTORY;
                 selectedMenuItem = 0;
+                sound_play("victory");
             }
             // Победа ботов — база уничтожена
             if (base_is_destroyed()) {
@@ -638,6 +639,7 @@ int main(void)
                 gameState            = GAME_STATE_GAME_OVER;
                 selectedMenuItem     = 0;
                 once                 = 1;
+                sound_play("game_over");
             }
 
             // Смерть игрока
@@ -647,6 +649,7 @@ int main(void)
                 gameOverTimer       = glfwGetTime();
                 gameState           = GAME_STATE_GAME_OVER;
                 selectedMenuItem    = 0;
+                sound_play("game_over");
             }
         }
 
