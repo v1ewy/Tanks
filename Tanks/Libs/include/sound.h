@@ -16,5 +16,6 @@ void sound_stop_music(void);
 
 // Освобождение ресурсов
 void sound_cleanup(void);
-
+void sound_play_delayed(const char* name, double delay_seconds);
+void sound_update_delayed(double currentTime);
 #endif
