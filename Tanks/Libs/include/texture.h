@@ -5,7 +5,10 @@
 
 typedef struct {
     GLuint player;
-    GLuint bot;
+    GLuint bot_normal;
+    GLuint bot_hound;
+    GLuint bot_hunter;
+    GLuint bot_armored;
     GLuint bullet;
     GLuint wall;
     GLuint water;

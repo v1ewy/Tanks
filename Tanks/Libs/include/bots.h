@@ -28,9 +28,9 @@ typedef enum {
 typedef struct {
     Bullet   b_bullet;
     double   deathTime;
-    double   nextRotateTime;
     float    x, y;
     float    dirX, dirY;
+    float    faceX, faceY;
     float    speed;
     int      active;
     float    invincibleTimer;
@@ -40,6 +40,8 @@ typedef struct {
     int      flashTimer;
     int      targetCellX;
     int      targetCellY;
+    int      animFrame;
+    double   lastAnimTime;
 } Bot;
 
 // База

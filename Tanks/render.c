@@ -183,6 +183,22 @@ void render_map(void) {
     }
 }
 
+void render_base(void) {
+    if (!gBase.alive) return;
+
+    float r = (gBase.hp == 3) ? 0.0f : (gBase.hp == 2) ? 1.0f : 1.0f;
+    float g = (gBase.hp == 3) ? 1.0f : (gBase.hp == 2) ? 1.0f : 0.0f;
+    float b = 0.0f, a = 1.0f;
+    float color[4] = {r, g, b, a};
+
+    draw_rect(gBase.x, gBase.y, gBase.width, gBase.height, color);
+
+    extern void render_text(const char*, float, float, float, float, float, float);
+    char txt[8];
+    sprintf(txt, "HP:%d", gBase.hp);
+    render_text(txt, gBase.x - 25, gBase.y + 8, 0.6f, 1.0f, 1.0f, 1.0f);
+}
+
 // render.c — отдельная функция для пули с поворотом
 void render_bullet(float x, float y, float w, float h,
                    float dirX, float dirY) {
@@ -263,49 +279,51 @@ draw_bullet:
 }
 
 // ── Боты ──────────────────────────────────────
-// Цвета по типу бота
-static float* bot_color(BotType type)
+static GLuint bot_texture(BotType type)
 {
-    static float red[]    = {1.0f, 0.0f, 0.0f, 1.0f}; // обычный
-    static float yellow[] = {1.0f, 1.0f, 0.0f, 1.0f}; // гончая
-    static float orange[] = {1.0f, 0.5f, 0.0f, 1.0f}; // охотник
-    static float silver[] = {0.7f, 0.7f, 0.7f, 1.0f}; // бронированный
     switch (type) {
-    case BOT_HOUND:   return yellow;
-    case BOT_HUNTER:  return orange;
-    case BOT_ARMORED: return silver;
-    default:          return red;
+    case BOT_HOUND:   return gTextures.bot_hound;
+    case BOT_HUNTER:  return gTextures.bot_hunter;
+    case BOT_ARMORED: return gTextures.bot_armored;
+    default:          return gTextures.bot_normal;
     }
 }
 
-void render_base(void) {
-    if (!gBase.alive) return;
+void render_bots(void)
+{
+    double now = glfwGetTime();
 
-    // Цвет меняется по HP: зелёный → жёлтый → красный
-    float r = (gBase.hp == 3) ? 0.0f : (gBase.hp == 2) ? 1.0f : 1.0f;
-    float g = (gBase.hp == 3) ? 1.0f : (gBase.hp == 2) ? 1.0f : 0.0f;
-    float b = 0.0f, a = 1.0f;
-    float color[4] = {r, g, b, a};
-
-    draw_rect(gBase.x, gBase.y, gBase.width, gBase.height, color);
-
-    extern void render_text(const char*, float, float, float, float, float, float);
-    char txt[8];
-    sprintf(txt, "HP:%d", gBase.hp);
-    render_text(txt, gBase.x - 25, gBase.y + 8, 0.6f, 1.0f, 1.0f, 1.0f);
-}
-
-void render_bots(void) {
     for (int i = 0; i < MAX_BOTS; i++) {
         if (!bots[i].active) continue;
-
-        int blink = (bots[i].invincibleTimer > 0.0f && fmod(glfwGetTime(), 0.2) > 0.1)
+        int blink = (bots[i].invincibleTimer > 0.0f && fmod(now, 0.2) > 0.1)
                  || (bots[i].flashTimer > 0 && bots[i].flashTimer % 2 == 0);
+
         if (!blink) {
-            float* color = bot_color(bots[i].type);
-            draw_rect(bots[i].x, bots[i].y, BOT_SIZE, BOT_SIZE, color);
+            int moving = (bots[i].dirX != 0.0f || bots[i].dirY != 0.0f);
+            if (moving && now - bots[i].lastAnimTime >= 0.15) {
+                bots[i].animFrame    = (bots[i].animFrame + 1) % 4;
+                bots[i].lastAnimTime = now;
+            }
+            if (!moving) bots[i].animFrame = 0;
+
+            float u0 = (float) bots[i].animFrame      / 4.0f;
+            float u1 = (float)(bots[i].animFrame + 1) / 4.0f;
+
+            // Угол поворота по направлению движения
+            float angle = 0.0f;
+            if      (bots[i].faceX >  0) angle =  3.14159f / 2.0f;
+            else if (bots[i].faceX <  0) angle = -3.14159f / 2.0f;
+            else if (bots[i].faceY >  0) angle =  3.14159f;
+            else                          angle =  0.0f;
+
+            render_rotated_uv(bots[i].x, bots[i].y,
+                              BOT_SIZE, BOT_SIZE,
+                              bot_texture(bots[i].type),
+                              u0, 0.0f, u1, 1.0f,
+                              angle);
         }
 
+        // Пуля бота
         if (bots[i].b_bullet.active) {
             render_bullet(bots[i].b_bullet.x, bots[i].b_bullet.y,
                           BULLET_WIDTH, BULLET_HEIGHT,
