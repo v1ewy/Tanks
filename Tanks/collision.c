@@ -175,9 +175,10 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                                  PLAYER_SIZE, PLAYER_SIZE)) {
                     if (player.invincibleTimer <= 0.0f) {
                         player.lives--;
+                        sound_play("player_death");
                         if (player.lives <= 0) {
                             player.dead = 1;
-                            sound_play("player_death");
+                            
                         } else {
                             player.x = sp_player.x;
                             player.y = sp_player.y;

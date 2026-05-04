@@ -480,6 +480,8 @@ int main(void)
         double currentTime = glfwGetTime();
         float  deltaTime   = (float)(currentTime - lastTime);
         lastTime = currentTime;
+        sound_update_delayed(currentTime);
+
 
         // ── Ввод: меню ──
         if (gameState == GAME_STATE_MENU) {
@@ -630,7 +632,7 @@ int main(void)
                 victoryTimer     = glfwGetTime();
                 gameState        = GAME_STATE_VICTORY;
                 selectedMenuItem = 0;
-                sound_play("victory");
+                sound_play_delayed("victory", 1.5);
             }
             // Победа ботов — база уничтожена
             if (base_is_destroyed()) {
@@ -649,7 +651,7 @@ int main(void)
                 gameOverTimer       = glfwGetTime();
                 gameState           = GAME_STATE_GAME_OVER;
                 selectedMenuItem    = 0;
-                sound_play("game_over");
+                sound_play_delayed("game_over", 1.5);
             }
         }
 
