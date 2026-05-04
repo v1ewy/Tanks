@@ -40,7 +40,7 @@ static GLuint load_texture(const char* path)
 
 void textures_load(void)
 {
-    gTextures.player = load_texture("Assets/Image/Player.png");
+    gTextures.player = load_texture("Assets/Image/Armored.png");
     gTextures.bot    = load_texture("Assets/Image/Wall.png");   // пока бот = wall цвет
     gTextures.bullet = load_texture("Assets/Image/Bullet.png");
     gTextures.wall   = load_texture("Assets/Image/Base.png");
