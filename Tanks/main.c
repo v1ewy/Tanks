@@ -220,7 +220,7 @@ void ortho_projection(float left, float right, float bottom, float top, float* m
 // ─────────────────────────────────────────────
 void init_font(void)
 {
-    FILE* fontFile = fopen("Tanks/Assets/Fonts/arial.ttf", "rb");
+    FILE* fontFile = fopen("Assets/Fonts/arial.ttf", "rb");
     if (!fontFile) {
         fprintf(stderr, "Предупреждение: Шрифт не найден.\n");
         return;
