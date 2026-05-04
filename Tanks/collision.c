@@ -8,6 +8,7 @@
 #include <bots.h>
 #include <map.h>
 #include <score.h>
+#include <levels.h>
 #include "sound.h"
 
 static int _is_wall(int x, int y) {
@@ -120,6 +121,8 @@ int check_rect_collision_with_map(int who, float cx, float cy,
                             bots[k].flashTimer = 10;
                             if (bots[k].hp <= 0) {
                                 score_add_kill(bots[k].type);
+                                Level* lvl = &levels[currentLevelIndex];
+                                lvl->botCurrent--;
                                 bots[k].active    = 0;
                                 bots[k].deathTime = glfwGetTime();
                                 sound_play("bot_destroy");

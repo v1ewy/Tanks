@@ -36,6 +36,7 @@ void levels_init(void)
     levels[0].player_lives = 3;
     levels[0].name         = "OPEN FIELD";
     levels[0].botCount     = 12;
+    levels[0].botCurrent = 12;
     BotWave w1[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -72,6 +73,7 @@ void levels_init(void)
     levels[1].player_lives = 3;
     levels[1].name         = "URBAN COMBAT";
     levels[1].botCount     = 10;
+    levels[1].botCurrent = 10;
     BotWave w2[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -106,6 +108,7 @@ void levels_init(void)
     levels[2].player_lives = 5;
     levels[2].name         = "FORTRESS";
     levels[2].botCount     = 14;
+    levels[2].botCurrent = 14;
     BotWave w3[] = {
         {BOT_HOUND,   0},
         {BOT_HOUND,   1},

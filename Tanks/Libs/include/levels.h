@@ -17,7 +17,8 @@ typedef struct {
     int      player_lives;
     const char* name;
     BotWave  botQueue[MAX_LEVEL_BOTS]; // очередь ботов
-    int      botCount;                 // сколько ботов всего на уровне
+    int      botCount;
+    int botCurrent;
 } Level;
 
 extern Level levels[TOTAL_LEVELS];

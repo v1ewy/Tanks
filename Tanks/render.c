@@ -7,6 +7,7 @@
 #include <stdio.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <levels.h>
 
 RenderContext gRender;
 
@@ -335,6 +336,8 @@ void render_bots(void)
 // ── HUD ───────────────────────────────────────
 void render_hud(void)
 {
+    Level* lvl = &levels[currentLevelIndex];
+
     extern void render_text(const char*, float, float, float, float, float, float);
     extern int windowWidth, windowHeight;
 
@@ -342,8 +345,6 @@ void render_hud(void)
     sprintf(text, "LIVES: %d", player.lives);
     render_text(text, 20, 40, 0.9f, 1.0f, 1.0f, 1.0f);
 
-    int enemies = 0;
-    for (int i = 0; i < MAX_BOTS; i++) if (bots[i].active) enemies++;
-    sprintf(text, "ENEMIES: %d", enemies);
+    sprintf(text, "ENEMIES: %d", lvl->botCurrent);
     render_text(text, 20, 90, 0.9f, 1.0f, 1.0f, 1.0f);
 }
