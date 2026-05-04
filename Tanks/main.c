@@ -20,6 +20,7 @@
 #include <levels.h>
 #include <texture.h>
 #include <score.h>
+#include "sound.h"
 
 // ─────────────────────────────────────────────
 //  Константы окна и поля
@@ -47,6 +48,7 @@ int windowWidth  = WINDOW_WIDTH_INIT;
 int windowHeight = WINDOW_HEIGHT_INIT;
 int fieldX = 0, fieldY = 0;
 int outerX = 0, outerY = 0;
+
 
 // Определения из map.h
 int  map[GRID_SIZE][GRID_SIZE];
@@ -368,7 +370,7 @@ int main(void)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight,
-                                          "ТАНКИ - БОЕВАЯ АРЕНА", NULL, NULL);
+                                          "ТАНКИ - КТО ТЫ ВОИН ?", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Не удалось создать окно\n");
         glfwTerminate();
@@ -464,12 +466,14 @@ int main(void)
                 shaderProgramText, VAOText, VBOText,
                 projLocText, textColorLoc, fontTexture);
     levels_init();
-
+    sound_init();
+    sound_play_music("menu_music");
     // ── Переменные цикла ──
     double lastTime    = glfwGetTime();
     double lastKeyTime = 0.0;
     double keyDelay    = 0.2;
     int    once        = 0;
+    GameState lastGameState = GAME_STATE_MENU; 
 
     // ── Основной цикл ──
     while (!glfwWindowShouldClose(window)) {
@@ -646,6 +650,25 @@ int main(void)
             }
         }
 
+        // Музыка в меню
+        if (gameState != lastGameState) {
+            // Если переходим в игровые состояния - выключаем музыку
+            if (gameState == GAME_STATE_PLAYING ||
+                gameState == GAME_STATE_GAME_OVER ||
+                gameState == GAME_STATE_VICTORY) {
+                sound_stop_music();
+            }
+            // Если возвращаемся в меню из игровых состояний - включаем музыку заново
+            else if ((gameState == GAME_STATE_MENU || gameState == GAME_STATE_LEVEL_SELECT) &&
+                (lastGameState == GAME_STATE_PLAYING ||
+                    lastGameState == GAME_STATE_GAME_OVER ||
+                    lastGameState == GAME_STATE_VICTORY)) {
+                sound_play_music("menu_music");
+            }
+            // При переключении между MENU и LEVEL_SELECT ничего не делаем
+            lastGameState = gameState;
+        }
+
         // ─────────────────────────────────────────────
         //  Отрисовка
         // ─────────────────────────────────────────────
@@ -696,6 +719,7 @@ int main(void)
     if (VAOText)           glDeleteVertexArrays(1, &VAOText);
     if (VBOText)           glDeleteBuffers(1, &VBOText);
 
+    sound_cleanup();
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
