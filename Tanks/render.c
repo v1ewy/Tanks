@@ -192,12 +192,8 @@ void render_base(void) {
     float b = 0.0f, a = 1.0f;
     float color[4] = {r, g, b, a};
 
-    draw_rect(gBase.x, gBase.y, gBase.width, gBase.height, color);
-
-    extern void render_text(const char*, float, float, float, float, float, float);
-    char txt[8];
-    sprintf(txt, "HP:%d", gBase.hp);
-    render_text(txt, gBase.x - 25, gBase.y + 8, 0.6f, 1.0f, 1.0f, 1.0f);
+    render_rotated_uv(gBase.x, gBase.y, BLOCK_SIZE, BLOCK_SIZE,
+                      gTextures.base, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
 }
 
 // render.c — отдельная функция для пули с поворотом
@@ -347,4 +343,7 @@ void render_hud(void)
 
     sprintf(text, "ENEMIES: %d", lvl->botCurrent);
     render_text(text, 20, 90, 0.9f, 1.0f, 1.0f, 1.0f);
+    
+    sprintf(text, "HP BASE:%d", gBase.hp);
+    render_text(text, 20, 140, 0.9f, 1.0f, 1.0f, 1.0f);
 }

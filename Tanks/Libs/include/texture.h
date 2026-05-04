@@ -10,6 +10,7 @@ typedef struct {
     GLuint bot_hunter;
     GLuint bot_armored;
     GLuint bullet;
+    GLuint base;
     GLuint wall;
     GLuint water;
     GLuint wood;

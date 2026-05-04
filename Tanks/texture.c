@@ -46,7 +46,8 @@ void textures_load(void)
     gTextures.bot_hunter  = load_texture("Assets/Image/Hunter.png");
     gTextures.bot_armored = load_texture("Assets/Image/Armored.png");
     gTextures.bullet = load_texture("Assets/Image/Bullet.png");
-    gTextures.wall   = load_texture("Assets/Image/Base.png");
+    gTextures.wall   = load_texture("Assets/Image/Wall.png");
+    gTextures.base   = load_texture("Assets/Image/Base.png");
     gTextures.water  = load_texture("Assets/Image/Water.png");
     gTextures.wood   = load_texture("Assets/Image/Wood.png");
     gTextures.foliage   = load_texture("Assets/Image/Foliage.png");
