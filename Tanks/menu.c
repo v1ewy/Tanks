@@ -21,7 +21,7 @@ void render_menu(void)
     float cx = windowWidth  / 2.0f;
     float cy = windowHeight / 2.0f;
 
-    render_text("TANKS GAME",  cx - 180, cy - 350, 2.5f, 1.0f, 0.8f, 0.2f);
+    render_text("TANKS GAME",  cx - 170, cy - 350, 2.5f, 1.0f, 0.8f, 0.2f);
 
     const char* items[] = { "START GAME", "EXIT" };
     for (int i = 0; i < 2; i++) {
@@ -33,7 +33,7 @@ void render_menu(void)
     }
 
     render_text("W/S - Navigate     SPACE - Select",
-                cx - 280, cy + 400, 0.8f, 0.7f, 0.7f, 0.7f);
+                cx - 290, cy + 400, 0.8f, 0.7f, 0.7f, 0.7f);
 }
 
 void render_level_select(void)
@@ -77,11 +77,11 @@ void render_game_over_screen(void)
     float cy = windowHeight / 2.0f;
 
     render_text("GAME OVER",
-                cx - 150, cy - 50, 2.5f, 1.0f, 0.2f, 0.2f);
+                cx - 170, cy - 50, 2.5f, 1.0f, 0.2f, 0.2f);
     render_text(gameOverMessages[gameOverMessageIndex],
-                cx - 200, cy + 60, 1.3f, 1.0f, 0.8f, 0.2f);
+                cx - 170, cy + 60, 1.3f, 1.0f, 0.8f, 0.2f);
     render_text("PRESS SPACE TO SKIP",
-                cx - 160, cy + 180, 0.7f, 0.5f, 0.5f, 0.5f);
+                cx - 280, cy + 180, 0.7f, 0.5f, 0.5f, 0.5f);
 }
 
 void render_death_menu(void)
@@ -90,9 +90,8 @@ void render_death_menu(void)
     float cy = windowHeight / 2.0f;
 
     render_text("TANK DESTROYED",
-                cx - 170, cy - 200, 1.8f, 1.0f, 0.3f, 0.3f);
-    render_text(gameOverMessages[gameOverMessageIndex],
-                cx - 200, cy - 100, 1.2f, 1.0f, 0.8f, 0.2f);
+                cx - 180, cy - 200, 1.8f, 1.0f, 0.3f, 0.3f);
+
 
     const char* items[] = { "PLAY AGAIN", "MAIN MENU" };
     for (int i = 0; i < 2; i++) {
@@ -104,7 +103,7 @@ void render_death_menu(void)
     }
 
     render_text("W/S - Navigate     SPACE - Select",
-                cx - 280, cy + 220, 0.7f, 0.5f, 0.5f, 0.5f);
+                cx - 320, cy + 220, 0.7f, 0.5f, 0.5f, 0.5f);
 }
 
 void render_victory_screen(void)
@@ -170,11 +169,11 @@ void render_victory_screen(void)
                     rowY + 45.0f,
                     0.85f, nr, ng, nb);
 
-        rowY += 100.0f; // ← увеличили шаг между типами (было 90)
+        rowY += 120.0f; 
     }
 
     // Разделитель
-    rowY += 10.0f;
+    rowY += 20.0f;
 
     // Бонус за скорость
     if (gTimeBonusAwarded > 0) {
@@ -206,5 +205,5 @@ void render_victory_screen(void)
     }
 
     render_text("W/S - Navigate     SPACE - Select",
-                cx - 280, rowY + 240.0f, 0.7f, 0.5f, 0.5f, 0.5f);
+                cx - 300, rowY + 240.0f, 0.7f, 0.5f, 0.5f, 0.5f);
 }

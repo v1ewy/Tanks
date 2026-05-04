@@ -65,11 +65,11 @@ int gTimeBonusAwarded = 0;
 double victoryTimer = 0.0;
 
 const char* gameOverMessages[] = {
-    "КАПИТАН УБИТ",
-    "ЭКИПАЖ КОНТУЖЕН",
-    "ТАНК ГОРИТ",
-    "ВЗРЫВ БОЕКОМПЛЕКТА",
-    "КРИТИЧЕСКИЕ ПОВРЕЖДЕНИЯ"
+    "CAPTAIN KILLED",
+    "CREW CONCUSSED",
+    "TANK ON FIRE",
+    "AMMO EXPLOSION",
+    "CRITICAL DAMAGE"
 };
 int gameOverMessagesCount = 5;
 
