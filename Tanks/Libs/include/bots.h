@@ -18,15 +18,36 @@
 
 // Типы ботов
 typedef enum {
-    BOT_NORMAL  = 0,  // средняя скорость, цель: игрок или база
-    BOT_HOUND   = 1,  // быстрый, цель: база
-    BOT_HUNTER  = 2,  // средняя скорость, цель: игрок
-    BOT_ARMORED = 3   // медленный, 3 хита
+    BOT_NORMAL  = 0,
+    BOT_HOUND   = 1,
+    BOT_HUNTER  = 2,
+    BOT_ARMORED = 3
 } BotType;
+
+// ── union для специфичных данных по типу бота ────────────────────────
+// Курсовое требование: union в пользовательских типах данных.
+// Обоснование: каждый тип бота хранит разные данные поведения,
+// но в памяти они занимают одно и то же место — экономия памяти
+// при большом количестве одновременных ботов.
+typedef union {
+    struct {
+        int hitCount;        // сколько раз попали (BOT_ARMORED)
+        int armorIntegrity;  // 3=целый, 2=повреждён, 1=критично
+    } armored;
+    struct {
+        int rushingToBase;   // 1 = в режиме прорыва к базе (BOT_HOUND)
+        int ignorePlayer;    // 1 = игнорирует игрока
+    } hound;
+    struct {
+        float lastSeenX;     // последняя известная позиция игрока (BOT_HUNTER/NORMAL)
+        float lastSeenY;
+    } hunter;
+} BotTypeData;
 
 // Структура бота
 typedef struct {
-    Bullet   b_bullet;
+    Bullet      b_bullet;
+    BotTypeData typeData;   // union с данными по типу бота
     double   deathTime;
     float    x, y;
     float    dirX, dirY;
@@ -34,7 +55,8 @@ typedef struct {
     float    speed;
     int      active;
     float    invincibleTimer;
-    double stuckTimer;
+    double   stuckTimer;
+    double   collisionStuckTimer; // таймер застревания при блокировке ботом/игроком
     BotType  type;
     int      hp;
     int      flashTimer;
@@ -42,6 +64,7 @@ typedef struct {
     int      targetCellY;
     int      animFrame;
     double   lastAnimTime;
+    int      detourAttempt; // счётчик неудачных попыток — триггер объезда
 } Bot;
 
 // База
@@ -61,8 +84,6 @@ void bots_update(float deltaTime, double currentTime,
                  Spawner* spawnPoints, int spawnCount);
 
 void base_init(int fieldX, int fieldY);
-
-// Возвращает 1 если боты победили (база уничтожена)
 int  base_is_destroyed(void);
 
 #endif // BOT_H

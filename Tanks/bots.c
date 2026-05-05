@@ -58,16 +58,14 @@ static float grid_to_world(int cell, int fieldOrigin)
     return fieldOrigin + cell * CELL_SIZE + CELL_SIZE / 2.0f;
 }
 
-// Возвращает направление выстрела (sdx, sdy) или 0,0 если не выровнен
+// ── Стрельба ──────────────────────────────────────────────────────────
+// ИСПРАВЛЕНИЕ #3: допуск уменьшен с CELL_SIZE/2 до CELL_SIZE/4
+// Боты стреляют только при точном выравнивании — игра стала легче
 static int bot_aligned_with_player(Bot* b, float* sdx, float* sdy)
 {
     float dx = player.x - b->x;
     float dy = player.y - b->y;
-
-    // Допуск — половина клетки. Бот считается выровненным если
-    // перпендикулярное смещение меньше половины CELL_SIZE.
-    // Маленький допуск (halfBullet=5px) делал стрельбу практически невозможной.
-    float tolerance = CELL_SIZE / 2.0f;
+    float tolerance = CELL_SIZE / 4.0f;  // было CELL_SIZE / 2.0f
 
     if (fabsf(dx) > fabsf(dy)) {
         if (fabsf(dy) <= tolerance) {
@@ -85,7 +83,6 @@ static int bot_aligned_with_player(Bot* b, float* sdx, float* sdy)
     return 0;
 }
 
-// Проверяет прямую видимость по прямой между ботом и игроком
 static int bot_has_clear_shot(Bot* b, float sdx, float sdy, int fieldX, int fieldY)
 {
     int bi = world_to_grid(b->x, fieldX);
@@ -94,13 +91,11 @@ static int bot_has_clear_shot(Bot* b, float sdx, float sdy, int fieldX, int fiel
     int pj = world_to_grid(player.y, fieldY);
 
     if (sdx != 0) {
-        // Горизонтальный выстрел — проверяем клетки по X
         int minI = (bi < pi) ? bi : pi;
         int maxI = (bi > pi) ? bi : pi;
         for (int i = minI + 1; i < maxI; i++)
             if (map[bj][i] == 2 || map[bj][i] == 3) return 0;
     } else {
-        // Вертикальный выстрел — проверяем клетки по Y
         int minJ = (bj < pj) ? bj : pj;
         int maxJ = (bj > pj) ? bj : pj;
         for (int j = minJ + 1; j < maxJ; j++)
@@ -109,7 +104,6 @@ static int bot_has_clear_shot(Bot* b, float sdx, float sdy, int fieldX, int fiel
     return 1;
 }
 
-// В bots.c, после bot_has_clear_shot:
 static int bot_has_clear_shot_to(Bot* b, float tx, float ty,
                                   float sdx, float sdy,
                                   int fieldX, int fieldY)
@@ -145,7 +139,6 @@ static void bot_try_shoot(Bot* b, float tx, float ty, double currentTime)
     if (fabsf(dx) > fabsf(dy)) sdx = (dx > 0) ? 1.0f : -1.0f;
     else                        sdy = (dy > 0) ? 1.0f : -1.0f;
 
-    // Обновляем взгляд бота в сторону выстрела
     b->faceX = sdx;
     b->faceY = sdy;
 
@@ -167,7 +160,6 @@ static void spawn_next_bot(Spawner* spawnPoints, int spawnCount,
     Level* lvl = &levels[currentLevelIndex];
     if (botQueueIndex >= lvl->botCount) return;
 
-    // Считаем активных ботов
     int activeCount = 0;
     for (int i = 0; i < MAX_BOTS; i++)
         if (bots[i].active) activeCount++;
@@ -175,44 +167,59 @@ static void spawn_next_bot(Spawner* spawnPoints, int spawnCount,
 
     BotWave* wave = &lvl->botQueue[botQueueIndex];
 
-    // Индекс точки спавна из очереди
     int spIdx = wave->spawnPointIndex;
     if (spIdx >= spawnCount) spIdx = 0;
 
-    // Проверяем что точка спавна свободна
     for (int k = 0; k < MAX_BOTS; k++) {
         if (!bots[k].active) continue;
         float dx = fabsf(bots[k].x - spawnPoints[spIdx].x);
         float dy = fabsf(bots[k].y - spawnPoints[spIdx].y);
-        if (dx < BOT_SIZE && dy < BOT_SIZE) return; // занято — ждём
+        if (dx < BOT_SIZE && dy < BOT_SIZE) return;
     }
 
-    // Ищем свободный слот
     for (int i = 0; i < MAX_BOTS; i++) {
         if (!bots[i].active &&
             (bots[i].deathTime == 0 ||
              currentTime - bots[i].deathTime >= BOT_SPAWN_INTERVAL))
         {
-            bots[i].x               = spawnPoints[spIdx].x;
-            bots[i].y               = spawnPoints[spIdx].y;
-            bots[i].type            = wave->type;
-            bots[i].speed           = bot_speed(wave->type);
-            bots[i].hp              = bot_hp(wave->type);
-            bots[i].dirX            = 0.0f;
-            bots[i].dirY            = 0.0f;
-            bots[i].active          = 1;
-            bots[i].invincibleTimer = INVINCIBLE_DURATION;
-            bots[i].flashTimer      = 0;
-            bots[i].deathTime       = 0.0;
-            bots[i].stuckTimer      = currentTime;
-            bots[i].b_bullet.active = 0;
+            bots[i].x                   = spawnPoints[spIdx].x;
+            bots[i].y                   = spawnPoints[spIdx].y;
+            bots[i].type                = wave->type;
+            bots[i].speed               = bot_speed(wave->type);
+            bots[i].hp                  = bot_hp(wave->type);
+            bots[i].dirX                = 0.0f;
+            bots[i].dirY                = 0.0f;
+            bots[i].active              = 1;
+            bots[i].invincibleTimer     = INVINCIBLE_DURATION;
+            bots[i].flashTimer          = 0;
+            bots[i].deathTime           = 0.0;
+            bots[i].stuckTimer          = currentTime;
+            bots[i].collisionStuckTimer = currentTime;
+            bots[i].detourAttempt       = 0;
+            bots[i].b_bullet.active     = 0;
             bots[i].b_bullet.lastShootTime = currentTime;
-            bots[i].targetCellX     = -1;
-            bots[i].targetCellY     = -1;
-            bots[i].animFrame    = 0;
-            bots[i].lastAnimTime = 0.0;
-            bots[i].faceX        = 0.0f;
-            bots[i].faceY        = -1.0f; // смотрит вниз к полю по умолчанию
+            bots[i].targetCellX         = -1;
+            bots[i].targetCellY         = -1;
+            bots[i].animFrame           = 0;
+            bots[i].lastAnimTime        = 0.0;
+            bots[i].faceX               = 0.0f;
+            bots[i].faceY               = -1.0f;
+
+            // Инициализируем union по типу бота
+            switch (wave->type) {
+            case BOT_ARMORED:
+                bots[i].typeData.armored.hitCount      = 0;
+                bots[i].typeData.armored.armorIntegrity = 3;
+                break;
+            case BOT_HOUND:
+                bots[i].typeData.hound.rushingToBase = 1;
+                bots[i].typeData.hound.ignorePlayer  = 1;
+                break;
+            default:
+                bots[i].typeData.hunter.lastSeenX = player.x;
+                bots[i].typeData.hunter.lastSeenY = player.y;
+                break;
+            }
 
             botQueueIndex++;
             return;
@@ -220,50 +227,26 @@ static void spawn_next_bot(Spawner* spawnPoints, int spawnCount,
     }
 }
 
-static void hound_block_player(int fieldX, int fieldY,
-                                int blocked[GRID_SIZE][GRID_SIZE])
-{
-    int pi = world_to_grid(player.x, fieldX);
-    int pj = world_to_grid(player.y, fieldY);
-    int radius = 3; // радиус обхода в клетках
-    for (int dj = -radius; dj <= radius; dj++) {
-        for (int di = -radius; di <= radius; di++) {
-            int ni = pi + di, nj = pj + dj;
-            if (ni < 0 || ni >= GRID_SIZE || nj < 0 || nj >= GRID_SIZE) continue;
-            if (map[nj][ni] == 0 || map[nj][ni] == 4) { // только свободные
-                blocked[nj][ni] = map[nj][ni];
-                map[nj][ni] = 99; // временная метка "непроходимо"
-            }
-        }
-    }
-}
-
-static void hound_unblock_player(int blocked[GRID_SIZE][GRID_SIZE],
-                                  int fieldX, int fieldY)
-{
-    int pi = world_to_grid(player.x, fieldX);
-    int pj = world_to_grid(player.y, fieldY);
-    int radius = 3;
-    for (int dj = -radius; dj <= radius; dj++) {
-        for (int di = -radius; di <= radius; di++) {
-            int ni = pi + di, nj = pj + dj;
-            if (ni < 0 || ni >= GRID_SIZE || nj < 0 || nj >= GRID_SIZE) continue;
-            if (blocked[nj][ni] != -1) {
-                map[nj][ni] = blocked[nj][ni];
-                blocked[nj][ni] = -1;
-            }
-        }
-    }
-}
-
+// ── Hound: блокировка зоны игрока ────────────────────────────────────
+// ИСПРАВЛЕНИЕ #1: если Hound уже внутри радиуса игрока — не блокируем карту,
+// пусть едет напрямую к базе, не застревает на месте.
 static void hound_apply_block(int fieldX, int fieldY, int botI, int botJ)
 {
     int pi = world_to_grid(player.x, fieldX);
     int pj = world_to_grid(player.y, fieldY);
+
+    int di = botI - pi;
+    int dj = botJ - pj;
+    // Если Hound уже в радиусе 3 клеток от игрока — не блокируем
+    if (di * di + dj * dj <= 9) {
+        g_hound_blocked = 0;
+        return;
+    }
+
     memset(g_hound_saved, -1, sizeof(g_hound_saved));
-    for (int dj = -3; dj <= 3; dj++) {
-        for (int di = -3; di <= 3; di++) {
-            int ni = pi + di, nj = pj + dj;
+    for (int dj2 = -3; dj2 <= 3; dj2++) {
+        for (int di2 = -3; di2 <= 3; di2++) {
+            int ni = pi + di2, nj = pj + dj2;
             if (ni < 0 || ni >= GRID_SIZE || nj < 0 || nj >= GRID_SIZE) continue;
             if (ni == botI && nj == botJ) continue;
             if (map[nj][ni] == 0 || map[nj][ni] == 4 || map[nj][ni] == 6) {
@@ -283,6 +266,39 @@ static void hound_remove_block(void)
             if (g_hound_saved[j][i] != -1)
                 map[j][i] = g_hound_saved[j][i];
     g_hound_blocked = 0;
+}
+
+// ── Выбор объездной клетки при застревании ────────────────────────────
+// ИСПРАВЛЕНИЕ #2: если бот застрял (коллизия с ботом или игроком),
+// выбираем случайную свободную соседнюю клетку, не совпадающую с целью.
+static int pick_detour_cell(int fromI, int fromJ,
+                             int blockedI, int blockedJ,
+                             int* outI, int* outJ)
+{
+    int candidates[4][2];
+    int count = 0;
+    int dx[] = {1, -1,  0,  0};
+    int dy[] = {0,  0,  1, -1};
+
+    for (int d = 0; d < 4; d++) {
+        int ni = fromI + dx[d];
+        int nj = fromJ + dy[d];
+        if (ni < 0 || ni >= GRID_SIZE || nj < 0 || nj >= GRID_SIZE) continue;
+        // Не идём туда, откуда нас заблокировали
+        if (ni == blockedI && nj == blockedJ) continue;
+        int t = map[nj][ni];
+        if (t == 0 || t == 4 || t == 5) {
+            candidates[count][0] = ni;
+            candidates[count][1] = nj;
+            count++;
+        }
+    }
+
+    if (count == 0) return 0;
+    int r = rand() % count;
+    *outI = candidates[r][0];
+    *outJ = candidates[r][1];
+    return 1;
 }
 
 // ── Основное обновление ───────────────────────────────────────────────
@@ -315,6 +331,16 @@ void bots_update(float deltaTime, double currentTime,
         }
         if (bots[i].flashTimer > 0) bots[i].flashTimer--;
 
+        // Синхронизируем union с актуальным состоянием бота
+        if (bots[i].type == BOT_ARMORED) {
+            bots[i].typeData.armored.armorIntegrity = bots[i].hp;
+        } else if (bots[i].type == BOT_HUNTER || bots[i].type == BOT_NORMAL) {
+            if (!player.dead) {
+                bots[i].typeData.hunter.lastSeenX = player.x;
+                bots[i].typeData.hunter.lastSeenY = player.y;
+            }
+        }
+
         // ── Текущая клетка ────────────────────────────────────────────
         int bi = world_to_grid(bots[i].x, fieldX);
         int bj = world_to_grid(bots[i].y, fieldY);
@@ -330,17 +356,15 @@ void bots_update(float deltaTime, double currentTime,
             goalI = world_to_grid(player.x, fieldX);
             goalJ = world_to_grid(player.y, fieldY);
             break;
-        default: // BOT_NORMAL, BOT_ARMORED — едут к базе
+        default:
             goalI = world_to_grid(gBase.x, fieldX);
             goalJ = world_to_grid(gBase.y, fieldY);
             break;
         }
 
-        // ── Стрельба по типу ──────────────────────────────────────────────
-        // ── Стрельба ──────────────────────────────────────────────────────────
+        // ── Стрельба по игроку ────────────────────────────────────────
         float shotDirX = 0.0f, shotDirY = 0.0f;
 
-        // 1. Стрельба по игроку (все типы кроме чистого гончего)
         if (bots[i].type != BOT_HOUND) {
             if (bot_aligned_with_player(&bots[i], &shotDirX, &shotDirY) &&
                 bot_has_clear_shot(&bots[i], shotDirX, shotDirY, fieldX, fieldY))
@@ -349,13 +373,12 @@ void bots_update(float deltaTime, double currentTime,
             }
         }
 
-        // 2. Стрельба по базе (все типы)
+        // ── Стрельба по базе ──────────────────────────────────────────
         if (!bots[i].b_bullet.active && gBase.alive) {
             float dx = gBase.x - bots[i].x;
             float dy = gBase.y - bots[i].y;
             float bsdx = 0.0f, bsdy = 0.0f;
 
-            // Выравниваем как и с игроком
             if (fabsf(dx) > fabsf(dy)) {
                 if (fabsf(dy) <= BULLET_HEIGHT / 2.0f)
                     bsdx = (dx > 0) ? 1.0f : -1.0f;
@@ -372,19 +395,19 @@ void bots_update(float deltaTime, double currentTime,
             }
         }
 
-        // ── Таймер застревания ────────────────────────────────────────
+        // ── Таймер застревания (нет движения вообще) ──────────────────
         if (bots[i].dirX == 0.0f && bots[i].dirY == 0.0f) {
             if (currentTime - bots[i].stuckTimer > 1.0) {
-                bots[i].targetCellX = -1;
-                bots[i].targetCellY = -1;
-                bots[i].stuckTimer  = currentTime;
+                bots[i].targetCellX   = -1;
+                bots[i].targetCellY   = -1;
+                bots[i].stuckTimer    = currentTime;
+                bots[i].detourAttempt++;
             }
         } else {
             bots[i].stuckTimer = currentTime;
         }
 
         // ── Навигация A* ──────────────────────────────────────────────
-        // ── Навигация A* (пересчёт только по таймеру) ─────────────────────────
         int hasTarget = (bots[i].targetCellX >= 0 && bots[i].targetCellY >= 0);
 
         float tCX = hasTarget ? grid_to_world(bots[i].targetCellX, fieldX) : bots[i].x;
@@ -395,36 +418,45 @@ void bots_update(float deltaTime, double currentTime,
             (bots[i].y - tCY) * (bots[i].y - tCY));
         int reachedTarget = hasTarget && (distToTarget < 2.0f);
 
-        // Пересчёт пути сразу при достижении клетки или при отсутствии цели.
-        // Паузы между клетками убраны — они и создавали рывки.
-        // Антипаровозик реализован через случайное смещение целевой клетки.
         if (!hasTarget || reachedTarget) {
             if (reachedTarget) {
-                // Фиксируем позицию строго по центру клетки
                 bots[i].x = grid_to_world(bi, fieldX);
                 bots[i].y = grid_to_world(bj, fieldY);
             }
 
-            // Антипаровозик: Normal/Armored с шансом 25% идут к соседней
-            // клетке от цели — это разбивает колонну без остановок.
             int rGoalI = goalI, rGoalJ = goalJ;
+
+            // Антипаровозик + обход при застревании
             if (bots[i].type == BOT_NORMAL || bots[i].type == BOT_ARMORED) {
-                if (rand() % 4 == 0) {
+                int doDetour = (rand() % 4 == 0) || (bots[i].detourAttempt > 0);
+                if (doDetour) {
                     int offsets[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
                     int r = rand() % 4;
                     int ni = goalI + offsets[r][0];
                     int nj = goalJ + offsets[r][1];
-                    if (ni >= 0 && ni < GRID_SIZE &&
-                        nj >= 0 && nj < GRID_SIZE &&
+                    if (ni >= 0 && ni < GRID_SIZE && nj >= 0 && nj < GRID_SIZE &&
                         (map[nj][ni] == 0 || map[nj][ni] == 4 || map[nj][ni] == 5))
                     {
                         rGoalI = ni;
                         rGoalJ = nj;
                     }
+                    bots[i].detourAttempt = 0;
                 }
             }
 
-            // Для Hound — блокируем зону вокруг игрока
+            // Hunter и Hound при застревании тоже объезжают
+            if ((bots[i].type == BOT_HUNTER || bots[i].type == BOT_HOUND)
+                && bots[i].detourAttempt > 0)
+            {
+                int altI, altJ;
+                if (pick_detour_cell(bi, bj, rGoalI, rGoalJ, &altI, &altJ)) {
+                    rGoalI = altI;
+                    rGoalJ = altJ;
+                }
+                bots[i].detourAttempt = 0;
+            }
+
+            // Hound: блокируем зону игрока (только если снаружи)
             if (bots[i].type == BOT_HOUND)
                 hound_apply_block(fieldX, fieldY, bi, bj);
 
@@ -444,7 +476,6 @@ void bots_update(float deltaTime, double currentTime,
                 bots[i].dirX = (float)(next.x - bi);
                 bots[i].dirY = (float)(next.y - bj);
 
-                // Фиксируем перпендикулярную ось чтобы не было сноса
                 if (bots[i].dirX != 0.0f)
                     bots[i].y = grid_to_world(bj, fieldY);
                 if (bots[i].dirY != 0.0f)
@@ -462,15 +493,23 @@ void bots_update(float deltaTime, double currentTime,
                     bots[i].targetCellY = bj;
                 }
             } else {
-                bots[i].dirX        = 0.0f;
-                bots[i].dirY        = 0.0f;
-                bots[i].targetCellX = bi;
-                bots[i].targetCellY = bj;
+                // A* пути нет — пробуем случайный объезд
+                int altI, altJ;
+                if (pick_detour_cell(bi, bj, rGoalI, rGoalJ, &altI, &altJ)) {
+                    bots[i].targetCellX = altI;
+                    bots[i].targetCellY = altJ;
+                    bots[i].dirX = (float)(altI - bi);
+                    bots[i].dirY = (float)(altJ - bj);
+                } else {
+                    bots[i].dirX        = 0.0f;
+                    bots[i].dirY        = 0.0f;
+                    bots[i].targetCellX = bi;
+                    bots[i].targetCellY = bj;
+                }
             }
         }
 
-        // Запоминаем направление взгляда пока бот движется.
-        // faceX/faceY не обнуляются при остановке — рендер использует их.
+        // Запоминаем направление взгляда пока бот движется
         if (bots[i].dirX != 0.0f || bots[i].dirY != 0.0f) {
             bots[i].faceX = bots[i].dirX;
             bots[i].faceY = bots[i].dirY;
@@ -481,7 +520,6 @@ void bots_update(float deltaTime, double currentTime,
             float newX = bots[i].x + bots[i].dirX * bots[i].speed * deltaTime;
             float newY = bots[i].y + bots[i].dirY * bots[i].speed * deltaTime;
 
-            // Не перелетаем центр целевой клетки
             float tcX = grid_to_world(bots[i].targetCellX, fieldX);
             float tcY = grid_to_world(bots[i].targetCellY, fieldY);
             if (bots[i].dirX > 0.0f && newX > tcX) newX = tcX;
@@ -496,8 +534,21 @@ void bots_update(float deltaTime, double currentTime,
                     newX, newY, BOT_SIZE, BOT_SIZE, (float)i, 0)) {
                 bots[i].x = newX;
                 bots[i].y = newY;
+                // Движение прошло — сбрасываем таймер коллизии
+                bots[i].collisionStuckTimer = currentTime;
+            } else {
+                // ИСПРАВЛЕНИЕ #2: застрял из-за коллизии с ботом или игроком.
+                // Ждём 0.5 сек, затем сбрасываем путь и делаем detour.
+                if (currentTime - bots[i].collisionStuckTimer > 0.5) {
+                    bots[i].targetCellX         = -1;
+                    bots[i].targetCellY         = -1;
+                    bots[i].dirX                = 0.0f;
+                    bots[i].dirY                = 0.0f;
+                    bots[i].detourAttempt++;
+                    bots[i].collisionStuckTimer = currentTime;
+                    bots[i].stuckTimer          = currentTime;
+                }
             }
-            // При коллизии просто стоим — stuckTimer пересчитает путь
         }
 
         // ── Обновление пули ───────────────────────────────────────────

@@ -24,7 +24,4 @@ extern Spawner sp_player;
 void player_update(void* window, float deltaTime, double currentTime,
                    int fieldX, int fieldY, int fieldSize);
 
-// Отрисовка
-void player_draw(void (*draw_rect)(float x, float y, float w, float h, float* color));
-
 #endif // PLAYER_H

@@ -21,6 +21,7 @@
 #include <texture.h>
 #include <score.h>
 #include "sound.h"
+#include "leaderboard.h"
 
 // ─────────────────────────────────────────────
 //  Константы окна и поля
@@ -34,9 +35,12 @@
 //  Состояния игры
 // ─────────────────────────────────────────────
 typedef enum {
+    GAME_STATE_NICK_INPUT,    // ввод ника при старте
     GAME_STATE_MENU,
+    GAME_STATE_LEADERBOARD,   // таблица рекордов
     GAME_STATE_LEVEL_SELECT,
     GAME_STATE_PLAYING,
+    GAME_STATE_PAUSED,        // пауза
     GAME_STATE_GAME_OVER,
     GAME_STATE_VICTORY
 } GameState;
@@ -49,20 +53,21 @@ int windowHeight = WINDOW_HEIGHT_INIT;
 int fieldX = 0, fieldY = 0;
 int outerX = 0, outerY = 0;
 
-
-// Определения из map.h
 int  map[GRID_SIZE][GRID_SIZE];
 Wood woods[GRID_SIZE][GRID_SIZE];
 
-GameState gameState      = GAME_STATE_MENU;
+GameState gameState      = GAME_STATE_NICK_INPUT;
 int selectedMenuItem     = 0;
 int selectedLevel        = 0;
 int total_levels         = TOTAL_LEVELS;
 
 double gameOverTimer        = 0.0;
 int    gameOverMessageIndex = 0;
-int gTimeBonusAwarded = 0;
-double victoryTimer = 0.0;
+int    gTimeBonusAwarded    = 0;
+double victoryTimer         = 0.0;
+
+// Флаг: рекорд уже добавлен для текущей сессии победы/поражения
+static int gScoreSaved = 0;
 
 const char* gameOverMessages[] = {
     "CAPTAIN KILLED",
@@ -73,7 +78,7 @@ const char* gameOverMessages[] = {
 };
 int gameOverMessagesCount = 5;
 
-// Текстовый рендер (используется в render.c и menu.c через extern)
+// Текстовый рендер
 stbtt_bakedchar cdata[96];
 GLuint fontTexture;
 GLuint shaderProgramText;
@@ -94,6 +99,30 @@ void ortho_projection(float left, float right, float bottom, float top, float* m
 void init_font(void);
 void render_text(const char* text, float x, float y, float scale,
                  float r, float g, float b);
+void render_controls_hud(void);
+
+// ─────────────────────────────────────────────
+//  Callback ввода символов (для ника)
+// ─────────────────────────────────────────────
+static void char_callback(GLFWwindow* window, unsigned int codepoint)
+{
+    (void)window;
+    if (gameState != GAME_STATE_NICK_INPUT) return;
+    int len = (int)strlen(gPlayerNick);
+    if (len >= NICK_MAX_LEN - 1) return;
+    // Только латиница, цифры и дефис
+    if ((codepoint >= 'A' && codepoint <= 'Z') ||
+        (codepoint >= 'a' && codepoint <= 'z') ||
+        (codepoint >= '0' && codepoint <= '9') ||
+        codepoint == '-' || codepoint == '_')
+    {
+        // Приводим к верхнему регистру
+        if (codepoint >= 'a' && codepoint <= 'z')
+            codepoint -= 32;
+        gPlayerNick[len]     = (char)codepoint;
+        gPlayerNick[len + 1] = '\0';
+    }
+}
 
 // ─────────────────────────────────────────────
 //  Шейдеры
@@ -272,6 +301,7 @@ void render_text(const char* text, float x, float y, float scale,
     float vertices[MAX_CHARS * VERTICES_PER_CHAR][FLOATS_PER_VERTEX];
     int   vertexCount = 0;
     float currentX = x, currentY = y;
+    float scaleX = scale, scaleY = scale;
 
     for (const char* p = text;
          *p && vertexCount < MAX_CHARS * VERTICES_PER_CHAR; p++)
@@ -279,8 +309,21 @@ void render_text(const char* text, float x, float y, float scale,
         unsigned char ch = (unsigned char)*p;
         if (ch >= 32 && ch < 128) {
             stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(cdata, 512, 512, ch - 32,
-                               &currentX, &currentY, &q, 1);
+            float cx2 = currentX, cy2 = currentY;
+            stbtt_GetBakedQuad(cdata, 512, 512, ch - 32, &cx2, &cy2, &q, 1);
+
+            // Применяем масштаб вокруг начальной точки
+            float qx0 = x + (q.x0 - x) * scaleX + (cx2 - currentX) * (scaleX - 1.0f);
+            // Упрощённый вариант: просто масштабируем координаты
+            float ox = currentX, oy = currentY;
+            q.x0 = ox + (q.x0 - ox) * scaleX;
+            q.x1 = ox + (q.x1 - ox) * scaleX;
+            q.y0 = oy + (q.y0 - oy) * scaleY;
+            q.y1 = oy + (q.y1 - oy) * scaleY;
+            currentX = ox + (cx2 - ox) * scaleX;
+            currentY = cy2;
+            (void)qx0;
+
             float* v = vertices[vertexCount];
             v[0]=q.x0; v[1]=q.y0; v[2]=q.s0; v[3]=q.t0; vertexCount++;
             v[4]=q.x1; v[5]=q.y0; v[6]=q.s1; v[7]=q.t0; vertexCount++;
@@ -303,6 +346,50 @@ void render_text(const char* text, float x, float y, float scale,
 }
 
 // ─────────────────────────────────────────────
+//  HUD управления (справа от поля)
+// ─────────────────────────────────────────────
+void render_controls_hud(void)
+{
+    Level* lvl = &levels[currentLevelIndex];
+    
+    char text[64];
+    sprintf(text, "LIVES: %d", player.lives);
+    render_text(text, outerX - 400, outerY + 150, 1.0f, 1.0f, 1.0f, 1.0f);
+
+    sprintf(text, "ENEMIES: %d", lvl->botCurrent);
+    render_text(text, outerX - 400, outerY + 220, 1.0f, 1.0f, 1.0f, 1.0f);
+    
+    sprintf(text, "HP BASE:%d", gBase.hp);
+    render_text(text, outerX - 400, outerY + 290, 1.0f, 1.0f, 1.0f, 1.0f);
+    
+    render_text(gPlayerNick, outerX - 400, outerY + 360, 1.0f, 0.2f, 1.0f, 0.4f);
+    
+    float panelX = outerX + OUTER_SIZE + 100.0f;
+    float panelY = (float)fieldY + 20.0f;
+    float lineH  = 55.0f;
+
+    render_text("CONTROLS", panelX + 10, panelY, 1.2f, 1.0f, 0.8f, 0.2f);
+    panelY += lineH * 1.4f;
+
+    // Клавиши движения
+    render_text("MOVE", panelX + 100, panelY, 0.9f, 0.6f, 0.6f, 0.6f);
+    panelY += lineH;
+    render_text("W", panelX + 140, panelY, 1.0f, 1.0f, 1.0f, 1.0f);
+    panelY += lineH * 0.85f;
+    render_text("A  S  D", panelX + 80, panelY, 1.0f, 1.0f, 1.0f, 1.0f);
+    panelY += lineH * 1.4f;
+
+    render_text("SHOOT", panelX + 80, panelY, 0.9f, 0.6f, 0.6f, 0.6f);
+    panelY += lineH;
+    render_text("SPACE", panelX + 73, panelY, 1.0f, 1.0f, 1.0f, 1.0f);
+    panelY += lineH * 1.4f;
+
+    render_text("PAUSE", panelX + 80, panelY, 0.9f, 0.6f, 0.6f, 0.6f);
+    panelY += lineH;
+    render_text("ESC", panelX + 100, panelY, 1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+// ─────────────────────────────────────────────
 //  Обновление проекции при ресайзе
 // ─────────────────────────────────────────────
 void update_projection_and_field(GLuint projLoc, int width, int height)
@@ -314,7 +401,6 @@ void update_projection_and_field(GLuint projLoc, int width, int height)
     windowHeight = height;
 
     ortho_projection(0.0f, (float)width, (float)height, 0.0f, projectionMatrix);
-    glUseProgram(*(GLuint*)glfwGetCurrentContext); // обновим ниже через projLoc
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, projectionMatrix);
 
     if (shaderProgramText) {
@@ -327,11 +413,9 @@ void update_projection_and_field(GLuint projLoc, int width, int height)
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
 
-    // Пересчёт позиции игрока
     player.x += fieldX - oldFieldX;
     player.y += fieldY - oldFieldY;
 
-    // Пересчёт деревьев
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 5) {
@@ -399,6 +483,7 @@ int main(void)
 
     glfwSetWindowUserPointer(window, &projLoc);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCharCallback(window, char_callback); // для ввода ника
 
     // ── Проекция и поле ──
     fieldX = (windowWidth  - FIELD_SIZE) / 2;
@@ -425,7 +510,6 @@ int main(void)
     glBindVertexArray(0);
 
     // ── VAO для квадратов ──
-    // Вершины: pos(x,y) + uv(u,v)
     float quadVerts[] = {
         -0.5f, -0.5f,  0.0f, 0.0f,
          0.5f, -0.5f,  1.0f, 0.0f,
@@ -443,24 +527,18 @@ int main(void)
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIdx), quadIdx, GL_STATIC_DRAW);
-
-    // aPos
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // aTexCoord
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
-
     glBindVertexArray(0);
 
-    // Создаём текстурный шейдер
     GLuint texShaderProgram = create_program(texVertexShaderSource, texFragmentShaderSource);
     GLint  texProjLoc   = glGetUniformLocation(texShaderProgram, "uProjection");
     GLint  texModelLoc  = glGetUniformLocation(texShaderProgram, "uModel");
 
     textures_load();
 
-    // render_init — добавить новые параметры:
     render_init(shaderProgram, VAO, modelLoc, colorLoc, projLoc,
                 texShaderProgram, texModelLoc, texProjLoc,
                 shaderProgramText, VAOText, VBOText,
@@ -468,12 +546,19 @@ int main(void)
     levels_init();
     sound_init();
     sound_play_music("menu_music");
+
+    // Загружаем таблицу рекордов из файла
+    leaderboard_load();
+
     // ── Переменные цикла ──
     double lastTime    = glfwGetTime();
     double lastKeyTime = 0.0;
     double keyDelay    = 0.2;
     int    once        = 0;
-    GameState lastGameState = GAME_STATE_MENU; 
+    GameState lastGameState = GAME_STATE_NICK_INPUT;
+
+    // Инициализируем ник пустой строкой
+    gPlayerNick[0] = '\0';
 
     // ── Основной цикл ──
     while (!glfwWindowShouldClose(window)) {
@@ -482,20 +567,43 @@ int main(void)
         lastTime = currentTime;
         sound_update_delayed(currentTime);
 
+        // ── Ввод ника ─────────────────────────────────────────────────
+        if (gameState == GAME_STATE_NICK_INPUT) {
+            // Backspace
+            if (glfwGetKey(window, GLFW_KEY_BACKSPACE) == GLFW_PRESS &&
+                currentTime - lastKeyTime > 0.1)
+            {
+                int len = (int)strlen(gPlayerNick);
+                if (len > 0) gPlayerNick[len - 1] = '\0';
+                lastKeyTime = currentTime;
+            }
+            // Enter — подтверждение
+            if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
+                currentTime - lastKeyTime > keyDelay)
+            {
+                if (strlen(gPlayerNick) == 0)
+                    strncpy(gPlayerNick, "PLAYER", NICK_MAX_LEN - 1);
+                gameState        = GAME_STATE_MENU;
+                selectedMenuItem = 0;
+                lastKeyTime      = currentTime;
+            }
+        }
 
-        // ── Ввод: меню ──
-        if (gameState == GAME_STATE_MENU) {
+        // ── Меню ──────────────────────────────────────────────────────
+        else if (gameState == GAME_STATE_MENU) {
             if (currentTime - lastKeyTime > keyDelay) {
                 if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                    selectedMenuItem = (selectedMenuItem - 1 + 3) % 3;
                     lastKeyTime = currentTime;
                 } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-                    selectedMenuItem = (selectedMenuItem + 1) % 2;
+                    selectedMenuItem = (selectedMenuItem + 1) % 3;
                     lastKeyTime = currentTime;
                 } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
                     if (selectedMenuItem == 0) {
                         gameState     = GAME_STATE_LEVEL_SELECT;
                         selectedLevel = 0;
+                    } else if (selectedMenuItem == 1) {
+                        gameState = GAME_STATE_LEADERBOARD;
                     } else {
                         glfwSetWindowShouldClose(window, 1);
                     }
@@ -504,10 +612,23 @@ int main(void)
             }
         }
 
-        // ── Ввод: выбор уровня ──
+        // ── Таблица рекордов ──────────────────────────────────────────
+        else if (gameState == GAME_STATE_LEADERBOARD) {
+            if (currentTime - lastKeyTime > keyDelay) {
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS ||
+                    glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+                {
+                    gameState        = GAME_STATE_MENU;
+                    selectedMenuItem = 0;
+                    lastKeyTime      = currentTime;
+                }
+            }
+        }
+
+        // ── Выбор уровня ──────────────────────────────────────────────
         else if (gameState == GAME_STATE_LEVEL_SELECT) {
             if (currentTime - lastKeyTime > keyDelay) {
-                int items = total_levels + 1; // уровни + BACK
+                int items = total_levels + 1;
                 if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
                     selectedLevel = (selectedLevel - 1 + items) % items;
                     lastKeyTime = currentTime;
@@ -517,9 +638,10 @@ int main(void)
                 } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
                     if (selectedLevel < total_levels) {
                         load_level(selectedLevel);
-                        gameState = GAME_STATE_PLAYING;
-                        lastTime  = glfwGetTime();
-                        once      = 0;
+                        gameState    = GAME_STATE_PLAYING;
+                        lastTime     = glfwGetTime();
+                        once         = 0;
+                        gScoreSaved  = 0;
                     } else {
                         gameState        = GAME_STATE_MENU;
                         selectedMenuItem = 0;
@@ -529,56 +651,50 @@ int main(void)
             }
         }
 
-        // ── Ввод: game over ──
+        // ── Пауза ─────────────────────────────────────────────────────
+        else if (gameState == GAME_STATE_PAUSED) {
+            if (currentTime - lastKeyTime > keyDelay) {
+                // ESC — возобновить
+                if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+                    gameState   = GAME_STATE_PLAYING;
+                    lastKeyTime = currentTime;
+                } else if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                    selectedMenuItem = (selectedMenuItem - 1 + 3) % 3;
+                    lastKeyTime = currentTime;
+                } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                    selectedMenuItem = (selectedMenuItem + 1) % 3;
+                    lastKeyTime = currentTime;
+                } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                    if (selectedMenuItem == 0) {
+                        // Resume
+                        gameState = GAME_STATE_PLAYING;
+                    } else if (selectedMenuItem == 1) {
+                        // Restart
+                        load_level(selectedLevel);
+                        gameState   = GAME_STATE_PLAYING;
+                        once        = 0;
+                        gScoreSaved = 0;
+                    } else {
+                        // Main menu
+                        gameState        = GAME_STATE_MENU;
+                        selectedMenuItem = 0;
+                    }
+                    lastKeyTime = currentTime;
+                }
+            }
+        }
+
+        // ── Game over ─────────────────────────────────────────────────
         else if (gameState == GAME_STATE_GAME_OVER) {
             double timePassed = currentTime - gameOverTimer;
 
             if (timePassed < 4.0) {
-                // Логика пропуска анимации: работает только пока 4 секунды не прошли
                 if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
                     currentTime - lastKeyTime > keyDelay) {
-                    gameOverTimer = currentTime - 4.0; // Сбрасываем таймер в "конец"
+                    gameOverTimer = currentTime - 4.0;
                     lastKeyTime   = currentTime;
                 }
-            }
-            else {
-                // Логика меню: работает ТОЛЬКО после завершения/пропуска анимации
-                if (currentTime - lastKeyTime > keyDelay) {
-                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
-                        lastKeyTime = currentTime;
-                    }
-                    else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-                        selectedMenuItem = (selectedMenuItem + 1) % 2;
-                        lastKeyTime = currentTime;
-                    }
-                    else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-                        if (selectedMenuItem == 0) {
-                            load_level(selectedLevel);
-                            gameState = GAME_STATE_PLAYING;
-                            once      = 0;
-                        } else {
-                            gameState        = GAME_STATE_MENU;
-                            selectedMenuItem = 0;
-                        }
-                        lastKeyTime = currentTime;
-                    }
-                }
-            }
-        }
-        
-        else if (gameState == GAME_STATE_VICTORY) {
-            double timePassed = currentTime - victoryTimer;
-
-            if (timePassed < 5.0) {
-                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
-                    currentTime - lastKeyTime > keyDelay) {
-                    victoryTimer = currentTime - 4.0; //
-                    lastKeyTime   = currentTime;
-                }
-            }
-            else {
-                
+            } else {
                 if (currentTime - lastKeyTime > keyDelay) {
                     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
                         selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
@@ -588,15 +704,48 @@ int main(void)
                         lastKeyTime = currentTime;
                     } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
                         if (selectedMenuItem == 0) {
-                            // Следующий уровень
+                            load_level(selectedLevel);
+                            gameState   = GAME_STATE_PLAYING;
+                            once        = 0;
+                            gScoreSaved = 0;
+                        } else {
+                            gameState        = GAME_STATE_MENU;
+                            selectedMenuItem = 0;
+                        }
+                        lastKeyTime = currentTime;
+                    }
+                }
+            }
+        }
+
+        // ── Victory ───────────────────────────────────────────────────
+        else if (gameState == GAME_STATE_VICTORY) {
+            double timePassed = currentTime - victoryTimer;
+
+            if (timePassed < 4.0) {
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS &&
+                    currentTime - lastKeyTime > keyDelay) {
+                    victoryTimer = currentTime - 4.0;
+                    lastKeyTime  = currentTime;
+                }
+            } else {
+                if (currentTime - lastKeyTime > keyDelay) {
+                    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem - 1 + 2) % 2;
+                        lastKeyTime = currentTime;
+                    } else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                        selectedMenuItem = (selectedMenuItem + 1) % 2;
+                        lastKeyTime = currentTime;
+                    } else if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                        if (selectedMenuItem == 0) {
                             int next = selectedLevel + 1;
                             if (next < total_levels) {
                                 selectedLevel = next;
                                 load_level(selectedLevel);
-                                gameState = GAME_STATE_PLAYING;
-                                once      = 0;
+                                gameState   = GAME_STATE_PLAYING;
+                                once        = 0;
+                                gScoreSaved = 0;
                             } else {
-                                // Все уровни пройдены
                                 gameState        = GAME_STATE_MENU;
                                 selectedMenuItem = 0;
                             }
@@ -610,13 +759,21 @@ int main(void)
             }
         }
 
-        // ── Игровая логика ──
+        // ── Игровая логика ────────────────────────────────────────────
         else if (gameState == GAME_STATE_PLAYING) {
+
+            // ESC → пауза
+            if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS &&
+                currentTime - lastKeyTime > keyDelay)
+            {
+                gameState        = GAME_STATE_PAUSED;
+                selectedMenuItem = 0;
+                lastKeyTime      = currentTime;
+            }
 
             player_update(window, deltaTime, currentTime,
                           fieldX, fieldY, FIELD_SIZE);
 
-            // Подсчёт спавн-точек для bots_update
             int spawn_count = 0;
             for (int j = 0; j < GRID_SIZE; j++)
                 for (int i = 0; i < GRID_SIZE; i++)
@@ -626,6 +783,7 @@ int main(void)
                         fieldX, fieldY, FIELD_SIZE,
                         sp_bots, spawn_count);
 
+            // Победа
             if (level_is_complete()) {
                 double elapsed = glfwGetTime() - gLevelStartTime;
                 gTimeBonusAwarded = score_time_bonus(selectedLevel, elapsed);
@@ -633,8 +791,15 @@ int main(void)
                 gameState        = GAME_STATE_VICTORY;
                 selectedMenuItem = 0;
                 sound_play_delayed("victory", 1.5);
+                // Сохраняем рекорд
+                if (!gScoreSaved) {
+                    leaderboard_add(gPlayerNick, gScore, selectedLevel);
+                    leaderboard_save();
+                    gScoreSaved = 1;
+                }
             }
-            // Победа ботов — база уничтожена
+
+            // База уничтожена
             if (base_is_destroyed()) {
                 gameOverMessageIndex = rand() % gameOverMessagesCount;
                 gameOverTimer        = glfwGetTime();
@@ -642,35 +807,45 @@ int main(void)
                 selectedMenuItem     = 0;
                 once                 = 1;
                 sound_play("game_over");
+                if (!gScoreSaved) {
+                    leaderboard_add(gPlayerNick, gScore, selectedLevel);
+                    leaderboard_save();
+                    gScoreSaved = 1;
+                }
             }
 
             // Смерть игрока
             if (player.dead && !once) {
-                once                = 1;
+                once                 = 1;
                 gameOverMessageIndex = rand() % gameOverMessagesCount;
-                gameOverTimer       = glfwGetTime();
-                gameState           = GAME_STATE_GAME_OVER;
-                selectedMenuItem    = 0;
+                gameOverTimer        = glfwGetTime();
+                gameState            = GAME_STATE_GAME_OVER;
+                selectedMenuItem     = 0;
                 sound_play_delayed("game_over", 1.5);
+                if (!gScoreSaved) {
+                    leaderboard_add(gPlayerNick, gScore, selectedLevel);
+                    leaderboard_save();
+                    gScoreSaved = 1;
+                }
             }
         }
 
-        // Музыка в меню
+        // ── Музыка при смене состояний ────────────────────────────────
         if (gameState != lastGameState) {
-            // Если переходим в игровые состояния - выключаем музыку
             if (gameState == GAME_STATE_PLAYING ||
                 gameState == GAME_STATE_GAME_OVER ||
                 gameState == GAME_STATE_VICTORY) {
-                sound_stop_music();
-            }
-            // Если возвращаемся в меню из игровых состояний - включаем музыку заново
-            else if ((gameState == GAME_STATE_MENU || gameState == GAME_STATE_LEVEL_SELECT) &&
-                (lastGameState == GAME_STATE_PLAYING ||
-                    lastGameState == GAME_STATE_GAME_OVER ||
-                    lastGameState == GAME_STATE_VICTORY)) {
+                if (lastGameState != GAME_STATE_PAUSED)
+                    sound_stop_music();
+            } else if ((gameState == GAME_STATE_MENU ||
+                        gameState == GAME_STATE_LEVEL_SELECT ||
+                        gameState == GAME_STATE_LEADERBOARD ||
+                        gameState == GAME_STATE_NICK_INPUT) &&
+                       (lastGameState == GAME_STATE_PLAYING ||
+                        lastGameState == GAME_STATE_GAME_OVER ||
+                        lastGameState == GAME_STATE_VICTORY)) {
                 sound_play_music("menu_music");
             }
-            // При переключении между MENU и LEVEL_SELECT ничего не делаем
             lastGameState = gameState;
         }
 
@@ -680,22 +855,30 @@ int main(void)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if (gameState == GAME_STATE_PLAYING) {
-            // Рамка поля
+        if (gameState == GAME_STATE_PLAYING || gameState == GAME_STATE_PAUSED) {
             float gray[4] = {0.5f, 0.5f, 0.5f, 1.0f};
             draw_rect(outerX + OUTER_SIZE / 2.0f,
                       outerY + OUTER_SIZE / 2.0f,
                       OUTER_SIZE, OUTER_SIZE, gray);
 
-            render_map();     // карта: стены, вода, деревья
-            render_base();  
-            render_player();  // игрок + его пуля
-            render_bots();    // боты + их пули
-            render_foliage(); // листва — поверх всего
-            render_hud();     // LIVES / ENEMIES
+            render_map();
+            render_base();
+            render_player();
+            render_bots();
+            render_foliage();
+            render_controls_hud();
+
+        if (gameState == GAME_STATE_PAUSED)
+                render_pause_menu();
+        }
+        else if (gameState == GAME_STATE_NICK_INPUT) {
+            render_nick_input();
         }
         else if (gameState == GAME_STATE_MENU) {
             render_menu();
+        }
+        else if (gameState == GAME_STATE_LEADERBOARD) {
+            render_leaderboard();
         }
         else if (gameState == GAME_STATE_LEVEL_SELECT) {
             render_level_select();
@@ -715,6 +898,7 @@ int main(void)
     }
 
     // ── Очистка ──
+    leaderboard_free();
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);

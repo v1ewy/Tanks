@@ -186,12 +186,6 @@ void render_map(void) {
 
 void render_base(void) {
     if (!gBase.alive) return;
-
-    float r = (gBase.hp == 3) ? 0.0f : (gBase.hp == 2) ? 1.0f : 1.0f;
-    float g = (gBase.hp == 3) ? 1.0f : (gBase.hp == 2) ? 1.0f : 0.0f;
-    float b = 0.0f, a = 1.0f;
-    float color[4] = {r, g, b, a};
-
     render_rotated_uv(gBase.x, gBase.y, BLOCK_SIZE, BLOCK_SIZE,
                       gTextures.base, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
 }
@@ -327,23 +321,4 @@ void render_bots(void)
                           bots[i].b_bullet.dirX, bots[i].b_bullet.dirY);
         }
     }
-}
-
-// ── HUD ───────────────────────────────────────
-void render_hud(void)
-{
-    Level* lvl = &levels[currentLevelIndex];
-
-    extern void render_text(const char*, float, float, float, float, float, float);
-    extern int windowWidth, windowHeight;
-
-    char text[64];
-    sprintf(text, "LIVES: %d", player.lives);
-    render_text(text, 20, 40, 0.9f, 1.0f, 1.0f, 1.0f);
-
-    sprintf(text, "ENEMIES: %d", lvl->botCurrent);
-    render_text(text, 20, 90, 0.9f, 1.0f, 1.0f, 1.0f);
-    
-    sprintf(text, "HP BASE:%d", gBase.hp);
-    render_text(text, 20, 140, 0.9f, 1.0f, 1.0f, 1.0f);
 }

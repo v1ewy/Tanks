@@ -36,7 +36,7 @@ void levels_init(void)
     levels[0].player_lives = 3;
     levels[0].name         = "OPEN FIELD";
     levels[0].botCount     = 12;
-    levels[0].botCurrent = 12;
+    levels[0].botCurrent   = 12;
     BotWave w1[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -73,7 +73,7 @@ void levels_init(void)
     levels[1].player_lives = 3;
     levels[1].name         = "URBAN COMBAT";
     levels[1].botCount     = 10;
-    levels[1].botCurrent = 10;
+    levels[1].botCurrent   = 10;
     BotWave w2[] = {
         {BOT_NORMAL,  0},
         {BOT_NORMAL,  1},
@@ -108,7 +108,7 @@ void levels_init(void)
     levels[2].player_lives = 5;
     levels[2].name         = "FORTRESS";
     levels[2].botCount     = 14;
-    levels[2].botCurrent = 14;
+    levels[2].botCurrent   = 14;
     BotWave w3[] = {
         {BOT_HOUND,   0},
         {BOT_HOUND,   1},
@@ -155,7 +155,7 @@ void load_level(int index)
     player.y               = sp_player.y;
     player.dead            = 0;
     player.lives           = levels[index].player_lives;
-    player.invincibleTimer = INVINCIBLE_DURATION; // неуязвим при спавне
+    player.invincibleTimer = INVINCIBLE_DURATION;
     player.p_bullet.active = 0;
     player.p_bullet.dirX   = 0.0f;
     player.p_bullet.dirY   = -1.0f;
@@ -177,14 +177,16 @@ void load_level(int index)
 
     // ── Сброс ботов ───────────────────────────────────────────
     for (int i = 0; i < MAX_BOTS; i++) {
-        bots[i].active          = 0;
-        bots[i].deathTime       = 0;
-        bots[i].b_bullet.active = 0;
-        bots[i].targetCellX     = -1;
-        bots[i].targetCellY     = -1;
-        bots[i].hp              = 1;
-        bots[i].invincibleTimer = 0.0f;
-        bots[i].flashTimer      = 0;
+        bots[i].active              = 0;
+        bots[i].deathTime           = 0;
+        bots[i].b_bullet.active     = 0;
+        bots[i].targetCellX         = -1;
+        bots[i].targetCellY         = -1;
+        bots[i].hp                  = 1;
+        bots[i].invincibleTimer     = 0.0f;
+        bots[i].flashTimer          = 0;
+        bots[i].collisionStuckTimer = 0.0; // инициализация нового поля
+        bots[i].detourAttempt       = 0;   // инициализация нового поля
     }
 
     // ── Инициализация деревьев ────────────────────────────────
@@ -209,15 +211,11 @@ void load_level(int index)
     gLevelStartTime = glfwGetTime();
 }
 
-// levels.c
 int level_is_complete(void)
 {
     if (botQueueIndex == 0) return 0;
-
     if (botQueueIndex < levels[currentLevelIndex].botCount) return 0;
-
     for (int i = 0; i < MAX_BOTS; i++)
         if (bots[i].active) return 0;
-
     return 1;
 }
