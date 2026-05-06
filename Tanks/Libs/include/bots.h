@@ -24,22 +24,18 @@ typedef enum {
     BOT_ARMORED = 3
 } BotType;
 
-// ── union для специфичных данных по типу бота ────────────────────────
-// Курсовое требование: union в пользовательских типах данных.
-// Обоснование: каждый тип бота хранит разные данные поведения,
-// но в памяти они занимают одно и то же место — экономия памяти
-// при большом количестве одновременных ботов.
+// union для специфичных данных по типу бота
 typedef union {
     struct {
-        int hitCount;        // сколько раз попали (BOT_ARMORED)
-        int armorIntegrity;  // 3=целый, 2=повреждён, 1=критично
+        int hitCount;
+        int armorIntegrity;
     } armored;
     struct {
-        int rushingToBase;   // 1 = в режиме прорыва к базе (BOT_HOUND)
-        int ignorePlayer;    // 1 = игнорирует игрока
+        int rushingToBase;
+        int ignorePlayer;
     } hound;
     struct {
-        float lastSeenX;     // последняя известная позиция игрока (BOT_HUNTER/NORMAL)
+        float lastSeenX;
         float lastSeenY;
     } hunter;
 } BotTypeData;
@@ -47,7 +43,7 @@ typedef union {
 // Структура бота
 typedef struct {
     Bullet      b_bullet;
-    BotTypeData typeData;   // union с данными по типу бота
+    BotTypeData typeData;
     double   deathTime;
     float    x, y;
     float    dirX, dirY;
@@ -56,7 +52,7 @@ typedef struct {
     int      active;
     float    invincibleTimer;
     double   stuckTimer;
-    double   collisionStuckTimer; // таймер застревания при блокировке ботом/игроком
+    double   collisionStuckTimer;
     BotType  type;
     int      hp;
     int      flashTimer;
@@ -64,7 +60,11 @@ typedef struct {
     int      targetCellY;
     int      animFrame;
     double   lastAnimTime;
-    int      detourAttempt; // счётчик неудачных попыток — триггер объезда
+    int      detourAttempt;
+    // Запрещённая клетка — A* не пойдёт туда пока forbidTicks > 0
+    int      forbidI;
+    int      forbidJ;
+    int      forbidTicks; // счётчик тиков запрета
 } Bot;
 
 // База

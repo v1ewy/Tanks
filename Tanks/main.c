@@ -401,8 +401,16 @@ void update_projection_and_field(GLuint projLoc, int width, int height)
     windowHeight = height;
 
     ortho_projection(0.0f, (float)width, (float)height, 0.0f, projectionMatrix);
+
+    // Цветной шейдер (рамка, прямоугольники) — нужен явный glUseProgram
+    glUseProgram(gRender.shaderProgram);
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, projectionMatrix);
 
+    // Текстурный шейдер
+    glUseProgram(gRender.texShaderProgram);
+    glUniformMatrix4fv(gRender.texProjLoc, 1, GL_FALSE, projectionMatrix);
+
+    // Текстовый шейдер
     if (shaderProgramText) {
         glUseProgram(shaderProgramText);
         glUniformMatrix4fv(projLocText, 1, GL_FALSE, projectionMatrix);
@@ -413,18 +421,43 @@ void update_projection_and_field(GLuint projLoc, int width, int height)
     outerX = fieldX - BORDER_WIDTH;
     outerY = fieldY - BORDER_WIDTH;
 
-    player.x += fieldX - oldFieldX;
-    player.y += fieldY - oldFieldY;
+    int dx = fieldX - oldFieldX;
+    int dy = fieldY - oldFieldY;
+
+    player.x    += dx;
+    player.y    += dy;
+    sp_player.x += dx;
+    sp_player.y += dy;
+
+    for (int i = 0; i < MAX_BOTS; i++) {
+        if (!bots[i].active) continue;
+        bots[i].x += dx;
+        bots[i].y += dy;
+        if (bots[i].b_bullet.active) {
+            bots[i].b_bullet.x += dx;
+            bots[i].b_bullet.y += dy;
+        }
+    }
+
+    for (int i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+        if (sp_bots[i].x == 0 && sp_bots[i].y == 0) continue;
+        sp_bots[i].x += dx;
+        sp_bots[i].y += dy;
+    }
+
+    gBase.x += dx;
+    gBase.y += dy;
+
+    if (player.p_bullet.active) {
+        player.p_bullet.x += dx;
+        player.p_bullet.y += dy;
+    }
 
     for (int j = 0; j < GRID_SIZE; j++) {
         for (int i = 0; i < GRID_SIZE; i++) {
             if (map[j][i] == 5) {
-                float oldCX = oldFieldX + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                float oldCY = oldFieldY + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                float newCX = fieldX    + i * CELL_SIZE + CELL_SIZE / 2.0f;
-                float newCY = fieldY    + j * CELL_SIZE + CELL_SIZE / 2.0f;
-                woods[j][i].x += newCX - oldCX;
-                woods[j][i].y += newCY - oldCY;
+                woods[j][i].x += dx;
+                woods[j][i].y += dy;
             }
         }
     }

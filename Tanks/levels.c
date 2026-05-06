@@ -187,6 +187,9 @@ void load_level(int index)
         bots[i].flashTimer          = 0;
         bots[i].collisionStuckTimer = 0.0; // инициализация нового поля
         bots[i].detourAttempt       = 0;   // инициализация нового поля
+        bots[i].forbidI             = -1;   // <-- новое
+        bots[i].forbidJ             = -1;   // <-- новое
+        bots[i].forbidTicks         = 0;
     }
 
     // ── Инициализация деревьев ────────────────────────────────
