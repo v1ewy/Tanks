@@ -6,7 +6,7 @@
 LeaderboardEntry* gLeaderboard = NULL;
 char gPlayerNick[NICK_MAX_LEN] = "PLAYER";
 
-// Найти указатель на указатель записи по нику (для удаления)
+// Найти указатель на указатель записи по нику 
 static LeaderboardEntry** leaderboard_find_entry(const char* nick)
 {
     LeaderboardEntry** cur = &gLeaderboard;
