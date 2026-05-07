@@ -66,7 +66,7 @@ int    gameOverMessageIndex = 0;
 int    gTimeBonusAwarded    = 0;
 double victoryTimer         = 0.0;
 
-// Флаг: рекорд уже добавлен для текущей сессии победы/поражения
+//рекорд уже добавлен для текущей сессии победы/поражения
 static int gScoreSaved = 0;
 
 const char* gameOverMessages[] = {

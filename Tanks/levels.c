@@ -134,6 +134,7 @@ void load_level(int index)
     botQueueIndex     = 0;
 
     memcpy(map, levels[index].map, sizeof(int) * GRID_SIZE * GRID_SIZE);
+    levels[currentLevelIndex].botCurrent = levels[currentLevelIndex].botCount;
 
     // ── Спавн игрока ──────────────────────────────────────────
     int found = 0;

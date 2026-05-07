@@ -6,46 +6,79 @@
 LeaderboardEntry* gLeaderboard = NULL;
 char gPlayerNick[NICK_MAX_LEN] = "PLAYER";
 
-// Вставляет запись в список в порядке убывания счёта.
-// Если записей больше LEADERBOARD_MAX — обрезает хвост.
+// Найти указатель на указатель записи по нику (для удаления)
+static LeaderboardEntry** leaderboard_find_entry(const char* nick)
+{
+    LeaderboardEntry** cur = &gLeaderboard;
+    while (*cur) {
+        if (strcmp((*cur)->nick, nick) == 0)
+            return cur;
+        cur = &(*cur)->next;
+    }
+    return NULL;
+}
+
+// Удалить запись из списка
+static void leaderboard_remove_entry(LeaderboardEntry** ptr)
+{
+    LeaderboardEntry* to_remove = *ptr;
+    *ptr = to_remove->next;
+    free(to_remove);
+}
+
 void leaderboard_add(const char* nick, int score, int level)
 {
+    // Проверяем, есть ли уже такая запись
+    LeaderboardEntry** existing_ptr = leaderboard_find_entry(nick);
+    if (existing_ptr) {
+        LeaderboardEntry* existing = *existing_ptr;
+        if (score <= existing->score) {
+            // Не улучшили рекорд — ничего не делаем
+            return;
+        }
+        else {
+            // Улучшили — удаляем старую запись
+            leaderboard_remove_entry(existing_ptr);
+        }
+    }
+
+    // Создаём новую запись
     LeaderboardEntry* entry = (LeaderboardEntry*)malloc(sizeof(LeaderboardEntry));
     if (!entry) return;
     strncpy(entry->nick, nick, NICK_MAX_LEN - 1);
     entry->nick[NICK_MAX_LEN - 1] = '\0';
     entry->score = score;
     entry->level = level;
-    entry->next  = NULL;
+    entry->next = NULL;
 
-    // Вставка в отсортированную позицию (по убыванию score)
+    // Вставляем в отсортированный список (по убыванию score)
     if (!gLeaderboard || score > gLeaderboard->score) {
-        entry->next  = gLeaderboard;
+        entry->next = gLeaderboard;
         gLeaderboard = entry;
-    } else {
+    }
+    else {
         LeaderboardEntry* cur = gLeaderboard;
         while (cur->next && cur->next->score >= score)
             cur = cur->next;
         entry->next = cur->next;
-        cur->next   = entry;
+        cur->next = entry;
     }
 
-    // Обрезаем хвост сверх лимита
-    LeaderboardEntry* cur = gLeaderboard;
+    // Обрезаем список до LEADERBOARD_MAX
     int count = 1;
-    while (cur->next) {
-        if (count >= LEADERBOARD_MAX) {
-            LeaderboardEntry* tail = cur->next;
-            cur->next = NULL;
-            while (tail) {
-                LeaderboardEntry* tmp = tail->next;
-                free(tail);
-                tail = tmp;
-            }
-            break;
-        }
+    LeaderboardEntry* cur = gLeaderboard;
+    while (cur->next && count < LEADERBOARD_MAX) {
         cur = cur->next;
         count++;
+    }
+    if (cur->next) {
+        LeaderboardEntry* tail = cur->next;
+        cur->next = NULL;
+        while (tail) {
+            LeaderboardEntry* tmp = tail->next;
+            free(tail);
+            tail = tmp;
+        }
     }
 }
 
