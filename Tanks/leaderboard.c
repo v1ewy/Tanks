@@ -51,7 +51,7 @@ void leaderboard_add(const char* nick, int score, int level)
     entry->level = level;
     entry->next = NULL;
 
-    // Вставляем в отсортированный список (по убыванию score)
+    // Вставляем в отсортированный список (по убыванию )
     if (!gLeaderboard || score > gLeaderboard->score) {
         entry->next = gLeaderboard;
         gLeaderboard = entry;

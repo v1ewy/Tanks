@@ -20,8 +20,7 @@ typedef struct {
 extern Player  player;
 extern Spawner sp_player;
 
-// Обновление: ввод, движение, стрельба, неуязвимость
 void player_update(void* window, float deltaTime, double currentTime,
                    int fieldX, int fieldY, int fieldSize);
 
-#endif // PLAYER_H
+#endif 

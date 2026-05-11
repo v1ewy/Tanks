@@ -190,7 +190,6 @@ void render_base(void) {
                       gTextures.base, 1.0f, 1.0f, 0.0f, 0.0f, 3.14159f);
 }
 
-// render.c — отдельная функция для пули с поворотом
 void render_bullet(float x, float y, float w, float h,
                    float dirX, float dirY) {
     float angle = 0.0f;
@@ -199,7 +198,6 @@ void render_bullet(float x, float y, float w, float h,
     else if (dirY <  0) angle =  3.14159f / 2.0f;     // вверх
     else if (dirY >  0) angle = -3.14159f / 2.0f;     // вниз
 
-    // Всегда используем BULLET_WIDTH x BULLET_HEIGHT — поворот сделает остальное
     render_rotated_uv(x, y,
                       BULLET_WIDTH, BULLET_HEIGHT,
                       gTextures.bullet,

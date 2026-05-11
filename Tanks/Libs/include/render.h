@@ -54,4 +54,4 @@ void render_base(void);
 void render_bots(void);
 void render_hud(void);
 
-#endif // RENDER_H
+#endif 

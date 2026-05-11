@@ -5,18 +5,18 @@
 #include <bots.h>
 
 #define TOTAL_LEVELS 3
-#define MAX_LEVEL_BOTS 20  // максимум ботов на уровень
+#define MAX_LEVEL_BOTS 20 
 
 typedef struct {
     BotType type;
-    int     spawnPointIndex; // индекс точки спавна (0,1,... по порядку из карты)
+    int     spawnPointIndex; // индекс точки спавна (по порядку из карты)
 } BotWave;
 
 typedef struct {
     int      map[GRID_SIZE][GRID_SIZE];
     int      player_lives;
     const char* name;
-    BotWave  botQueue[MAX_LEVEL_BOTS]; // очередь ботов
+    BotWave  botQueue[MAX_LEVEL_BOTS]; 
     int      botCount;
     int botCurrent;
 } Level;
@@ -28,7 +28,7 @@ extern int currentLevelIndex;
 void levels_init(void);
 void load_level(int index);
 
-// Возвращает 1 если все боты уровня уже заспавнены и мертвы
+
 int level_is_complete(void);
 
-#endif // LEVELS_H
+#endif 

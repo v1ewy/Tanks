@@ -16,6 +16,7 @@ extern int  total_levels;
 extern double gameOverTimer;
 extern int  gameOverMessageIndex;
 extern const char* gameOverMessages[];
+extern int  gameOverReason;
 
 // ── Главное меню ──────────────────────────────────────────────────────
 void render_menu(void)
@@ -78,8 +79,12 @@ void render_game_over_screen(void)
 
     render_text("GAME OVER",
                 cx - 315, cy - 50, 2.5f, 1.0f, 0.2f, 0.2f);
-    render_text(gameOverMessages[gameOverMessageIndex],
-                cx - 270, cy + 80, 1.3f, 1.0f, 0.8f, 0.2f);
+    if (gameOverReason == 1) {
+        render_text("BASE DESTROYED", cx - 315, cy + 80, 1.3f, 1.0f, 0.5f, 0.2f);
+    }
+    else {
+        render_text(gameOverMessages[gameOverMessageIndex], cx - 270, cy + 80, 1.3f, 1.0f, 0.8f, 0.2f);
+    }
     render_text("PRESS SPACE TO SKIP",
                 cx - 215, cy + 180, 0.8f, 0.3f, 0.3f, 0.3f);
 }
